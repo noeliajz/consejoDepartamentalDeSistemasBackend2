@@ -77,6 +77,11 @@ def list_files():
 def download_file(file_id):
     service = get_drive_service()
 
+    # 🔹 Obtener metadata (nombre original)
+    file = service.files().get(fileId=file_id, fields="name").execute()
+    file_name = file.get("name")
+
+    # 🔹 Descargar contenido
     request_drive = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
 
@@ -88,4 +93,18 @@ def download_file(file_id):
 
     fh.seek(0)
 
-    return send_file(fh, download_name="archivo", as_attachment=True)
+    # 🔹 Usar nombre real (con extensión)
+    return send_file(fh, download_name=file_name, as_attachment=True)
+
+# 🔹 Eliminar archivo
+def delete_file(file_id):
+    try:
+        service = get_drive_service()
+
+        service.files().delete(fileId=file_id).execute()
+
+        return jsonify({"message": "Archivo eliminado"})
+
+    except Exception as e:
+        print("ERROR DELETE:", e)
+        return jsonify({"error": str(e)}), 500
