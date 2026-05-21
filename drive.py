@@ -36,15 +36,22 @@ def get_drive_service():
 
 
 # 📤 SUBIR ARCHIVO
+from googleapiclient.http import MediaIoBaseUpload
+
 def upload_file():
     try:
         file = request.files['file']
-        file.save(file.filename)
 
         service = get_drive_service()
 
         file_metadata = {'name': file.filename}
-        media = MediaFileUpload(file.filename, resumable=True)
+
+        # 🔹 usar memoria en lugar de guardar en disco
+        media = MediaIoBaseUpload(
+            file.stream,
+            mimetype=file.mimetype,
+            resumable=True
+        )
 
         uploaded = service.files().create(
             body=file_metadata,
@@ -52,14 +59,11 @@ def upload_file():
             fields='id'
         ).execute()
 
-        os.remove(file.filename)
-
         return jsonify({"id": uploaded.get('id')})
 
     except Exception as e:
         print("ERROR UPLOAD:", e)
         return jsonify({"error": str(e)}), 500
-
 
 # 📋 LISTAR ARCHIVOS
 def list_files():
