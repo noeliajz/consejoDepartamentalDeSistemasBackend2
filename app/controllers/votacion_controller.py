@@ -2,117 +2,365 @@ from flask import request, jsonify
 from bson import ObjectId
 
 from app.models.votacion_model import votaciones_collection
+from app.models.tema_model import temas_collection
+from app.models.consejero_model import consejeros_collection
+
+
+# ==========================================
+# CONVERTIR OBJECTID A STRING
+# ==========================================
+def convertir_objectid(documento):
+
+    # LISTA
+    if isinstance(documento, list):
+
+        return [
+            convertir_objectid(item)
+            for item in documento
+        ]
+
+    # DICCIONARIO
+    elif isinstance(documento, dict):
+
+        nuevo_documento = {}
+
+        for key, value in documento.items():
+
+            # OBJECTID
+            if isinstance(value, ObjectId):
+
+                nuevo_documento[key] = str(value)
+
+            # DICCIONARIO
+            elif isinstance(value, dict):
+
+                nuevo_documento[key] = convertir_objectid(value)
+
+            # LISTA
+            elif isinstance(value, list):
+
+                nuevo_documento[key] = convertir_objectid(value)
+
+            # OTROS
+            else:
+
+                nuevo_documento[key] = value
+
+        return nuevo_documento
+
+    return documento
+
 
 # =====================================================
 # OBTENER TODAS
 # =====================================================
-
 def obtener_votaciones():
 
-    votaciones = []
+    try:
 
-    for votacion in votaciones_collection.find().sort("_id", -1):
+        votaciones = []
 
-        votacion["_id"] = str(votacion["_id"])
+        for votacion in votaciones_collection.find().sort("_id", -1):
 
-        votaciones.append(votacion)
+            votacion = convertir_objectid(votacion)
 
-    return jsonify(votaciones), 200
+            # ==========================================
+            # RELACION TEMA
+            # ==========================================
+            tema = None
+
+            if "idTema" in votacion:
+
+                tema = temas_collection.find_one({
+                    "_id": ObjectId(votacion["idTema"])
+                })
+
+                if tema:
+
+                    tema = convertir_objectid(tema)
+
+            # ==========================================
+            # RELACION CONSEJERO
+            # ==========================================
+            consejero = None
+
+            if "idConsejero" in votacion:
+
+                consejero = consejeros_collection.find_one({
+                    "_id": ObjectId(votacion["idConsejero"])
+                })
+
+                if consejero:
+
+                    consejero = convertir_objectid(consejero)
+
+            # ==========================================
+            # AGREGAR RELACIONES
+            # ==========================================
+            votacion["tema"] = tema
+            votacion["consejero"] = consejero
+
+            votaciones.append(votacion)
+
+        return jsonify(votaciones), 200
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =====================================================
 # OBTENER UNA
 # =====================================================
-
 def obtener_votacion(id):
 
-    votacion = votaciones_collection.find_one({
-        "_id": ObjectId(id)
-    })
+    try:
 
-    if not votacion:
+        votacion = votaciones_collection.find_one({
+            "_id": ObjectId(id)
+        })
+
+        if not votacion:
+
+            return jsonify({
+                "error": "Votación no encontrada"
+            }), 404
+
+        votacion = convertir_objectid(votacion)
+
+        # ==========================================
+        # RELACION TEMA
+        # ==========================================
+        tema = None
+
+        if "idTema" in votacion:
+
+            tema = temas_collection.find_one({
+                "_id": ObjectId(votacion["idTema"])
+            })
+
+            if tema:
+
+                tema = convertir_objectid(tema)
+
+        # ==========================================
+        # RELACION CONSEJERO
+        # ==========================================
+        consejero = None
+
+        if "idConsejero" in votacion:
+
+            consejero = consejeros_collection.find_one({
+                "_id": ObjectId(votacion["idConsejero"])
+            })
+
+            if consejero:
+
+                consejero = convertir_objectid(consejero)
+
+        # ==========================================
+        # AGREGAR RELACIONES
+        # ==========================================
+        votacion["tema"] = tema
+        votacion["consejero"] = consejero
+
+        return jsonify(votacion), 200
+
+    except Exception as e:
 
         return jsonify({
-            "error": "Votación no encontrada"
-        }), 404
-
-    votacion["_id"] = str(votacion["_id"])
-
-    return jsonify(votacion), 200
+            "error": str(e)
+        }), 500
 
 
 # =====================================================
 # CREAR
 # =====================================================
-
 def crear_votacion():
 
-    data = request.json
+    try:
 
-    nueva_votacion = {
+        data = request.json
 
-        "tema": data.get("tema"),
+        # ==========================================
+        # VALIDAR CAMPOS
+        # ==========================================
+        campos = [
+            "idTema",
+            "idConsejero",
+            "fecha",
+            "favor",
+            "contra",
+            "abstencion",
+            "total",
+            "resultado"
+        ]
 
-        "reunion_id": data.get("reunion_id"),
+        for campo in campos:
 
-        "fecha": data.get("fecha"),
+            if campo not in data:
 
-        "favor": data.get("favor", 0),
+                return jsonify({
+                    "error": f"Falta el campo {campo}"
+                }), 400
 
-        "contra": data.get("contra", 0),
+        # ==========================================
+        # VALIDAR TEMA
+        # ==========================================
+        tema = temas_collection.find_one({
+            "_id": ObjectId(data["idTema"])
+        })
 
-        "abstencion": data.get("abstencion", 0),
+        if not tema:
 
-        "total": data.get("total", 0),
+            return jsonify({
+                "error": "Tema no encontrado"
+            }), 404
 
-        "resultado": data.get("resultado"),
+        # ==========================================
+        # VALIDAR CONSEJERO
+        # ==========================================
+        consejero = consejeros_collection.find_one({
+            "_id": ObjectId(data["idConsejero"])
+        })
 
-        # RELACION CON USUARIOS
-        "votos": data.get("votos", [])
-    }
+        if not consejero:
 
-    resultado = votaciones_collection.insert_one(
-        nueva_votacion
-    )
+            return jsonify({
+                "error": "Consejero no encontrado"
+            }), 404
 
-    return jsonify({
-        "message": "Votación creada",
-        "id": str(resultado.inserted_id)
-    }), 201
+        # ==========================================
+        # CREAR VOTACION
+        # ==========================================
+        nueva_votacion = {
+
+            "idTema": data.get("idTema"),
+
+            "idConsejero": data.get("idConsejero"),
+
+            "fecha": data.get("fecha"),
+
+            "favor": data.get("favor", 0),
+
+            "contra": data.get("contra", 0),
+
+            "abstencion": data.get("abstencion", 0),
+
+            "total": data.get("total", 0),
+
+            "resultado": data.get("resultado")
+        }
+
+        resultado = votaciones_collection.insert_one(
+            nueva_votacion
+        )
+
+        return jsonify({
+            "message": "Votación creada",
+            "id": str(resultado.inserted_id)
+        }), 201
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =====================================================
 # EDITAR
 # =====================================================
-
 def editar_votacion(id):
 
-    data = request.json
+    try:
 
-    votaciones_collection.update_one(
-        {
-            "_id": ObjectId(id)
-        },
-        {
-            "$set": data
-        }
-    )
+        data = request.json
 
-    return jsonify({
-        "message": "Votación actualizada"
-    }), 200
+        # ==========================================
+        # VALIDAR TEMA
+        # ==========================================
+        if "idTema" in data:
+
+            tema = temas_collection.find_one({
+                "_id": ObjectId(data["idTema"])
+            })
+
+            if not tema:
+
+                return jsonify({
+                    "error": "Tema no encontrado"
+                }), 404
+
+        # ==========================================
+        # VALIDAR CONSEJERO
+        # ==========================================
+        if "idConsejero" in data:
+
+            consejero = consejeros_collection.find_one({
+                "_id": ObjectId(data["idConsejero"])
+            })
+
+            if not consejero:
+
+                return jsonify({
+                    "error": "Consejero no encontrado"
+                }), 404
+
+        # ==========================================
+        # ACTUALIZAR
+        # ==========================================
+        resultado = votaciones_collection.update_one(
+            {
+                "_id": ObjectId(id)
+            },
+            {
+                "$set": data
+            }
+        )
+
+        if resultado.matched_count == 0:
+
+            return jsonify({
+                "error": "Votación no encontrada"
+            }), 404
+
+        return jsonify({
+            "message": "Votación actualizada"
+        }), 200
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
 # =====================================================
 # ELIMINAR
 # =====================================================
-
 def eliminar_votacion(id):
 
-    votaciones_collection.delete_one({
-        "_id": ObjectId(id)
-    })
+    try:
 
-    return jsonify({
-        "message": "Votación eliminada"
-    }), 200
+        resultado = votaciones_collection.delete_one({
+            "_id": ObjectId(id)
+        })
+
+        if resultado.deleted_count == 0:
+
+            return jsonify({
+                "error": "Votación no encontrada"
+            }), 404
+
+        return jsonify({
+            "message": "Votación eliminada"
+        }), 200
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500

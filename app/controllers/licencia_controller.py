@@ -1,59 +1,53 @@
-# app/controllers/asistencia_controller.py
+# app/controllers/licencia_controller.py
 
 from flask import request, jsonify
 from bson import ObjectId
 
-from app.models.asistencia_model import (
-    asistencias_collection
+from app.models.licencia_model import (
+    licencias_collection
 )
 
-from app.models.reunion_model import (
-    reuniones_collection
+from app.models.consejero_model import (
+    consejeros_collection
 )
 
 
 # =========================
 # CREAR
 # =========================
-def crear_asistencia():
+def crear_licencia():
     try:
         datos = request.json
 
-        nueva_asistencia = {
+        nueva_licencia = {
 
-            "fecha": datos.get(
-                "fecha"
+            "fechaInicio": datos.get(
+                "fechaInicio"
             ),
 
-            # Presente o Ausente
-            "estado": datos.get(
-                "estado"
+            "fechaFin": datos.get(
+                "fechaFin"
             ),
 
-            # Si o No
-            "licencia": datos.get(
-                "licencia"
+            "motivo": datos.get(
+                "motivo"
             ),
+
             # RELACION CON CONSEJERO
             "consejero_id": datos.get(
                 "consejero_id"
-            ),
-
-            # RELACION CON REUNION
-            "reunion_id": datos.get(
-                "reunion_id"
             )
         }
 
         resultado = (
-            asistencias_collection.insert_one(
-                nueva_asistencia
+            licencias_collection.insert_one(
+                nueva_licencia
             )
         )
 
         return jsonify({
             "mensaje":
-                "Asistencia creada correctamente",
+                "Licencia creada correctamente",
 
             "id":
                 str(
@@ -71,40 +65,40 @@ def crear_asistencia():
 # =========================
 # OBTENER TODAS
 # =========================
-def obtener_asistencias():
+def obtener_licencias():
     try:
-        asistencias = []
+        licencias = []
 
-        for asistencia in (
-            asistencias_collection.find()
+        for licencia in (
+            licencias_collection.find()
         ):
 
-            asistencia["_id"] = str(
-                asistencia["_id"]
+            licencia["_id"] = str(
+                licencia["_id"]
             )
 
             # =========================
-            # RELACION CON REUNION
+            # RELACION CONSEJERO
             # =========================
-            reunion = None
+            consejero = None
 
-            reunion_id = asistencia.get(
-                "reunion_id"
+            consejero_id = licencia.get(
+                "consejero_id"
             )
 
-            if reunion_id:
+            if consejero_id:
 
                 # si viene string
                 if isinstance(
-                    reunion_id,
+                    consejero_id,
                     str
                 ):
 
-                    reunion = (
-                        reuniones_collection.find_one({
+                    consejero = (
+                        consejeros_collection.find_one({
                             "_id":
                                 ObjectId(
-                                    reunion_id
+                                    consejero_id
                                 )
                         })
                     )
@@ -112,47 +106,48 @@ def obtener_asistencias():
                 # si viene ObjectId
                 else:
 
-                    reunion = (
-                        reuniones_collection.find_one({
+                    consejero = (
+                        consejeros_collection.find_one({
                             "_id":
-                                reunion_id
+                                consejero_id
                         })
                     )
 
             # =========================
-            # DATOS REUNION
+            # DATOS CONSEJERO
             # =========================
-            if reunion:
+            if consejero:
 
-                asistencia["reunion"] = {
+                licencia["consejero"] = {
+
                     "_id":
                         str(
-                            reunion["_id"]
+                            consejero["_id"]
                         ),
 
-                    "tema":
-                        reunion.get(
-                            "tema",
+                    "tipo":
+                        consejero.get(
+                            "tipo",
                             ""
                         ),
 
-                    "fecha":
-                        reunion.get(
-                            "fecha",
+                    "claustro":
+                        consejero.get(
+                            "claustro",
                             ""
                         )
                 }
 
             else:
 
-                asistencia["reunion"] = None
+                licencia["consejero"] = None
 
-            asistencias.append(
-                asistencia
+            licencias.append(
+                licencia
             )
 
         return jsonify(
-            asistencias
+            licencias
         ), 200
 
     except Exception as e:
@@ -165,87 +160,87 @@ def obtener_asistencias():
 # =========================
 # OBTENER POR ID
 # =========================
-def obtener_asistencia_por_id(id):
+def obtener_licencia_por_id(id):
     try:
-        asistencia = (
-            asistencias_collection.find_one({
+        licencia = (
+            licencias_collection.find_one({
                 "_id": ObjectId(id)
             })
         )
 
-        if not asistencia:
+        if not licencia:
 
             return jsonify({
                 "error":
-                    "Asistencia no encontrada"
+                    "Licencia no encontrada"
             }), 404
 
-        asistencia["_id"] = str(
-            asistencia["_id"]
+        licencia["_id"] = str(
+            licencia["_id"]
         )
 
         # =========================
-        # RELACION CON REUNION
+        # RELACION CONSEJERO
         # =========================
-        reunion = None
+        consejero = None
 
-        reunion_id = asistencia.get(
-            "reunion_id"
+        consejero_id = licencia.get(
+            "consejero_id"
         )
 
-        if reunion_id:
+        if consejero_id:
 
             if isinstance(
-                reunion_id,
+                consejero_id,
                 str
             ):
 
-                reunion = (
-                    reuniones_collection.find_one({
+                consejero = (
+                    consejeros_collection.find_one({
                         "_id":
                             ObjectId(
-                                reunion_id
+                                consejero_id
                             )
                     })
                 )
 
             else:
 
-                reunion = (
-                    reuniones_collection.find_one({
+                consejero = (
+                    consejeros_collection.find_one({
                         "_id":
-                            reunion_id
+                            consejero_id
                     })
                 )
 
-        if reunion:
+        if consejero:
 
-            asistencia["reunion"] = {
+            licencia["consejero"] = {
 
                 "_id":
                     str(
-                        reunion["_id"]
+                        consejero["_id"]
                     ),
 
-                "tema":
-                    reunion.get(
-                        "tema",
+                "tipo":
+                    consejero.get(
+                        "tipo",
                         ""
                     ),
 
-                "fecha":
-                    reunion.get(
-                        "fecha",
+                "claustro":
+                    consejero.get(
+                        "claustro",
                         ""
                     )
             }
 
         else:
 
-            asistencia["reunion"] = None
+            licencia["consejero"] = None
 
         return jsonify(
-            asistencia
+            licencia
         ), 200
 
     except Exception as e:
@@ -258,41 +253,38 @@ def obtener_asistencia_por_id(id):
 # =========================
 # ACTUALIZAR
 # =========================
-def actualizar_asistencia(id):
+def actualizar_licencia(id):
     try:
         datos = request.json
 
-        asistencia_actualizada = {
+        licencia_actualizada = {
 
-            "fecha": datos.get(
-                "fecha"
+            "fechaInicio": datos.get(
+                "fechaInicio"
             ),
 
-            "estado": datos.get(
-                "estado"
+            "fechaFin": datos.get(
+                "fechaFin"
             ),
 
-            "licencia": datos.get(
-                "licencia"
+            "motivo": datos.get(
+                "motivo"
             ),
 
-            "reunion_id": datos.get(
-                "reunion_id"
-            ),
             "consejero_id": datos.get(
                 "consejero_id"
             )
         }
 
         resultado = (
-            asistencias_collection.update_one(
+            licencias_collection.update_one(
                 {
                     "_id":
                         ObjectId(id)
                 },
                 {
                     "$set":
-                        asistencia_actualizada
+                        licencia_actualizada
                 }
             )
         )
@@ -301,12 +293,12 @@ def actualizar_asistencia(id):
 
             return jsonify({
                 "error":
-                    "Asistencia no encontrada"
+                    "Licencia no encontrada"
             }), 404
 
         return jsonify({
             "mensaje":
-                "Asistencia actualizada correctamente"
+                "Licencia actualizada correctamente"
         }), 200
 
     except Exception as e:
@@ -319,10 +311,10 @@ def actualizar_asistencia(id):
 # =========================
 # ELIMINAR
 # =========================
-def eliminar_asistencia(id):
+def eliminar_licencia(id):
     try:
         resultado = (
-            asistencias_collection.delete_one({
+            licencias_collection.delete_one({
                 "_id":
                     ObjectId(id)
             })
@@ -332,12 +324,12 @@ def eliminar_asistencia(id):
 
             return jsonify({
                 "error":
-                    "Asistencia no encontrada"
+                    "Licencia no encontrada"
             }), 404
 
         return jsonify({
             "mensaje":
-                "Asistencia eliminada correctamente"
+                "Licencia eliminada correctamente"
         }), 200
 
     except Exception as e:

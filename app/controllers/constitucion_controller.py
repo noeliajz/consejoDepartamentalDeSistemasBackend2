@@ -1,8 +1,8 @@
 from flask import request, jsonify
 from bson import ObjectId
 
-from app.models.comision_model import (
-    comisiones_collection
+from app.models.constitucion_model import (
+    constituciones_collection
 )
 
 
@@ -54,19 +54,17 @@ def convertir_objectid(documento):
 # ==========================================
 # CREAR
 # ==========================================
-def crear_comision():
+def crear_constitucion():
 
     try:
 
         datos = request.json
 
-        # ==========================================
         # VALIDAR CAMPOS
-        # ==========================================
         campos = [
-            "hora",
-            "lugar",
-            "fechaReunion"
+            "descripcion",
+            "fechaInicio",
+            "fechaFin"
         ]
 
         for campo in campos:
@@ -77,21 +75,21 @@ def crear_comision():
                     "error": f"Falta el campo {campo}"
                 }), 400
 
-        nueva_comision = {
+        nueva_constitucion = {
 
-            "hora": datos["hora"],
+            "descripcion": datos["descripcion"],
 
-            "lugar": datos["lugar"],
+            "fechaInicio": datos["fechaInicio"],
 
-            "fechaReunion": datos["fechaReunion"]
+            "fechaFin": datos["fechaFin"]
         }
 
-        resultado = comisiones_collection.insert_one(
-            nueva_comision
+        resultado = constituciones_collection.insert_one(
+            nueva_constitucion
         )
 
         return jsonify({
-            "mensaje": "Comision creada correctamente",
+            "mensaje": "Constitucion creada correctamente",
             "id": str(resultado.inserted_id)
         }), 201
 
@@ -105,21 +103,21 @@ def crear_comision():
 # ==========================================
 # OBTENER TODAS
 # ==========================================
-def obtener_comisiones():
+def obtener_constituciones():
 
     try:
 
-        comisiones = []
+        lista = []
 
-        for comision in comisiones_collection.find():
+        for constitucion in constituciones_collection.find():
 
-            comision = convertir_objectid(
-                comision
+            constitucion = convertir_objectid(
+                constitucion
             )
 
-            comisiones.append(comision)
+            lista.append(constitucion)
 
-        return jsonify(comisiones), 200
+        return jsonify(lista), 200
 
     except Exception as e:
 
@@ -131,25 +129,25 @@ def obtener_comisiones():
 # ==========================================
 # OBTENER POR ID
 # ==========================================
-def obtener_comision_por_id(id):
+def obtener_constitucion_por_id(id):
 
     try:
 
-        comision = comisiones_collection.find_one({
+        constitucion = constituciones_collection.find_one({
             "_id": ObjectId(id)
         })
 
-        if not comision:
+        if not constitucion:
 
             return jsonify({
-                "error": "Comision no encontrada"
+                "error": "Constitucion no encontrada"
             }), 404
 
-        comision = convertir_objectid(
-            comision
+        constitucion = convertir_objectid(
+            constitucion
         )
 
-        return jsonify(comision), 200
+        return jsonify(constitucion), 200
 
     except Exception as e:
 
@@ -161,25 +159,29 @@ def obtener_comision_por_id(id):
 # ==========================================
 # ACTUALIZAR
 # ==========================================
-def actualizar_comision(id):
+def actualizar_constitucion(id):
 
     try:
 
         datos = request.json
 
-        resultado = comisiones_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": datos}
+        resultado = constituciones_collection.update_one(
+            {
+                "_id": ObjectId(id)
+            },
+            {
+                "$set": datos
+            }
         )
 
         if resultado.matched_count == 0:
 
             return jsonify({
-                "error": "Comision no encontrada"
+                "error": "Constitucion no encontrada"
             }), 404
 
         return jsonify({
-            "mensaje": "Comision actualizada correctamente"
+            "mensaje": "Constitucion actualizada correctamente"
         }), 200
 
     except Exception as e:
@@ -192,22 +194,22 @@ def actualizar_comision(id):
 # ==========================================
 # ELIMINAR
 # ==========================================
-def eliminar_comision(id):
+def eliminar_constitucion(id):
 
     try:
 
-        resultado = comisiones_collection.delete_one({
+        resultado = constituciones_collection.delete_one({
             "_id": ObjectId(id)
         })
 
         if resultado.deleted_count == 0:
 
             return jsonify({
-                "error": "Comision no encontrada"
+                "error": "Constitucion no encontrada"
             }), 404
 
         return jsonify({
-            "mensaje": "Comision eliminada correctamente"
+            "mensaje": "Constitucion eliminada correctamente"
         }), 200
 
     except Exception as e:

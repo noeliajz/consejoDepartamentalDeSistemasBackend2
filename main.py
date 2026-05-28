@@ -17,6 +17,11 @@ from app.routes.temario_routes import temario_bp
 from app.routes.auth_routes import auth_bp
 from app.routes.dashboard_routes import dashboard_bp
 from app.routes.votacion_routes import votacion_bp
+from app.routes.consejero_routes import (consejero_bp)
+from app.routes.licencia_routes import (licencia_bp)
+from app.routes.constitucion_routes import (constitucion_bp)
+from app.routes.comision_consejero_routes import (comision_consejero_bp)
+
 
 app = Flask(__name__)
 
@@ -42,6 +47,10 @@ app.register_blueprint(temario_bp, url_prefix="/api")
 app.register_blueprint(auth_bp, url_prefix="/api")
 app.register_blueprint(dashboard_bp, url_prefix="/api")
 app.register_blueprint(votacion_bp, url_prefix="/api")
+app.register_blueprint(consejero_bp, url_prefix="/api")
+app.register_blueprint(licencia_bp, url_prefix="/api")
+app.register_blueprint(constitucion_bp, url_prefix="/api")
+app.register_blueprint(comision_consejero_bp, url_prefix="/api")
 
 if __name__ == "__main__":
     app.run(debug=True)
