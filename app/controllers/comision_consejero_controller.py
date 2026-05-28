@@ -1,9 +1,17 @@
 from flask import request, jsonify
 from bson import ObjectId
 
-from app.models.citacion_model import citaciones_collection
-from app.models.consejero_model import consejeros_collection
-from app.models.reunion_model import reuniones_collection
+from app.models.comision_consejero_model import (
+    comision_consejeros_collection
+)
+
+from app.models.comision_model import (
+    comisiones_collection
+)
+
+from app.models.consejero_model import (
+    consejeros_collection
+)
 
 
 # ==========================================
@@ -11,7 +19,7 @@ from app.models.reunion_model import reuniones_collection
 # ==========================================
 def convertir_objectid(documento):
 
-    # SI ES LISTA
+    # LISTA
     if isinstance(documento, list):
 
         return [
@@ -19,7 +27,7 @@ def convertir_objectid(documento):
             for item in documento
         ]
 
-    # SI ES DICCIONARIO
+    # DICCIONARIO
     elif isinstance(documento, dict):
 
         nuevo_documento = {}
@@ -41,7 +49,7 @@ def convertir_objectid(documento):
 
                 nuevo_documento[key] = convertir_objectid(value)
 
-            # OTROS TIPOS
+            # OTROS
             else:
 
                 nuevo_documento[key] = value
@@ -52,21 +60,22 @@ def convertir_objectid(documento):
 
 
 # ==========================================
-# CREAR CITACION
+# CREAR
 # ==========================================
-def crear_citacion():
+def crear_comision_consejero():
+
     try:
 
         datos = request.json
 
+        # ==========================================
         # VALIDAR CAMPOS
+        # ==========================================
         campos = [
+            "idComision",
             "idConsejero",
-            "idReunion",
-            "fechaEnvio",
-            "fechaReunion",
-            "canal",
-            "diasAnticipacion"
+            "esOyente",
+            "presente"
         ]
 
         for campo in campos:
@@ -76,6 +85,19 @@ def crear_citacion():
                 return jsonify({
                     "error": f"Falta el campo {campo}"
                 }), 400
+
+        # ==========================================
+        # VALIDAR COMISION
+        # ==========================================
+        comision = comisiones_collection.find_one({
+            "_id": ObjectId(datos["idComision"])
+        })
+
+        if not comision:
+
+            return jsonify({
+                "error": "Comision no encontrada"
+            }), 404
 
         # ==========================================
         # VALIDAR CONSEJERO
@@ -91,36 +113,25 @@ def crear_citacion():
             }), 404
 
         # ==========================================
-        # VALIDAR REUNION
+        # CREAR RELACION
         # ==========================================
-        reunion = reuniones_collection.find_one({
-            "_id": ObjectId(datos["idReunion"])
-        })
+        nueva_relacion = {
 
-        if not reunion:
+            "idComision": datos["idComision"],
 
-            return jsonify({
-                "error": "Reunion no encontrada"
-            }), 404
-
-        # ==========================================
-        # CREAR DOCUMENTO
-        # ==========================================
-        nueva_citacion = {
             "idConsejero": datos["idConsejero"],
-            "idReunion": datos["idReunion"],
-            "fechaEnvio": datos["fechaEnvio"],
-            "fechaReunion": datos["fechaReunion"],
-            "canal": datos["canal"],
-            "diasAnticipacion": datos["diasAnticipacion"]
+
+            "esOyente": datos["esOyente"],
+
+            "presente": datos["presente"]
         }
 
-        resultado = citaciones_collection.insert_one(
-            nueva_citacion
+        resultado = comision_consejeros_collection.insert_one(
+            nueva_relacion
         )
 
         return jsonify({
-            "mensaje": "Citacion creada correctamente",
+            "mensaje": "Relacion creada correctamente",
             "id": str(resultado.inserted_id)
         }), 201
 
@@ -134,45 +145,64 @@ def crear_citacion():
 # ==========================================
 # OBTENER TODAS
 # ==========================================
-def obtener_citaciones():
+def obtener_comision_consejeros():
+
     try:
 
         lista = []
 
-        for citacion in citaciones_collection.find():
+        for relacion in comision_consejeros_collection.find():
 
-            # CONVERTIR OBJECTID
-            citacion = convertir_objectid(citacion)
-
-            # ==========================================
-            # BUSCAR CONSEJERO
-            # ==========================================
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(citacion["idConsejero"])
-            })
-
-            if consejero:
-
-                consejero = convertir_objectid(consejero)
+            relacion = convertir_objectid(
+                relacion
+            )
 
             # ==========================================
-            # BUSCAR REUNION
+            # RELACION COMISION
             # ==========================================
-            reunion = reuniones_collection.find_one({
-                "_id": ObjectId(citacion["idReunion"])
-            })
+            comision = None
 
-            if reunion:
+            if "idComision" in relacion:
 
-                reunion = convertir_objectid(reunion)
+                comision = comisiones_collection.find_one({
+                    "_id": ObjectId(
+                        relacion["idComision"]
+                    )
+                })
+
+                if comision:
+
+                    comision = convertir_objectid(
+                        comision
+                    )
+
+            # ==========================================
+            # RELACION CONSEJERO
+            # ==========================================
+            consejero = None
+
+            if "idConsejero" in relacion:
+
+                consejero = consejeros_collection.find_one({
+                    "_id": ObjectId(
+                        relacion["idConsejero"]
+                    )
+                })
+
+                if consejero:
+
+                    consejero = convertir_objectid(
+                        consejero
+                    )
 
             # ==========================================
             # AGREGAR RELACIONES
             # ==========================================
-            citacion["consejero"] = consejero
-            citacion["reunion"] = reunion
+            relacion["comision"] = comision
 
-            lista.append(citacion)
+            relacion["consejero"] = consejero
+
+            lista.append(relacion)
 
         return jsonify(lista), 200
 
@@ -186,51 +216,70 @@ def obtener_citaciones():
 # ==========================================
 # OBTENER POR ID
 # ==========================================
-def obtener_citacion_por_id(id):
+def obtener_comision_consejero_por_id(id):
+
     try:
 
-        citacion = citaciones_collection.find_one({
+        relacion = comision_consejeros_collection.find_one({
             "_id": ObjectId(id)
         })
 
-        if not citacion:
+        if not relacion:
 
             return jsonify({
-                "error": "Citacion no encontrada"
+                "error": "Relacion no encontrada"
             }), 404
 
-        # CONVERTIR OBJECTID
-        citacion = convertir_objectid(citacion)
+        relacion = convertir_objectid(
+            relacion
+        )
 
         # ==========================================
-        # BUSCAR CONSEJERO
+        # RELACION COMISION
         # ==========================================
-        consejero = consejeros_collection.find_one({
-            "_id": ObjectId(citacion["idConsejero"])
-        })
+        comision = None
 
-        if consejero:
+        if "idComision" in relacion:
 
-            consejero = convertir_objectid(consejero)
+            comision = comisiones_collection.find_one({
+                "_id": ObjectId(
+                    relacion["idComision"]
+                )
+            })
+
+            if comision:
+
+                comision = convertir_objectid(
+                    comision
+                )
 
         # ==========================================
-        # BUSCAR REUNION
+        # RELACION CONSEJERO
         # ==========================================
-        reunion = reuniones_collection.find_one({
-            "_id": ObjectId(citacion["idReunion"])
-        })
+        consejero = None
 
-        if reunion:
+        if "idConsejero" in relacion:
 
-            reunion = convertir_objectid(reunion)
+            consejero = consejeros_collection.find_one({
+                "_id": ObjectId(
+                    relacion["idConsejero"]
+                )
+            })
+
+            if consejero:
+
+                consejero = convertir_objectid(
+                    consejero
+                )
 
         # ==========================================
         # AGREGAR RELACIONES
         # ==========================================
-        citacion["consejero"] = consejero
-        citacion["reunion"] = reunion
+        relacion["comision"] = comision
 
-        return jsonify(citacion), 200
+        relacion["consejero"] = consejero
+
+        return jsonify(relacion), 200
 
     except Exception as e:
 
@@ -242,10 +291,26 @@ def obtener_citacion_por_id(id):
 # ==========================================
 # ACTUALIZAR
 # ==========================================
-def actualizar_citacion(id):
+def actualizar_comision_consejero(id):
+
     try:
 
         datos = request.json
+
+        # ==========================================
+        # VALIDAR COMISION
+        # ==========================================
+        if "idComision" in datos:
+
+            comision = comisiones_collection.find_one({
+                "_id": ObjectId(datos["idComision"])
+            })
+
+            if not comision:
+
+                return jsonify({
+                    "error": "Comision no encontrada"
+                }), 404
 
         # ==========================================
         # VALIDAR CONSEJERO
@@ -262,25 +327,7 @@ def actualizar_citacion(id):
                     "error": "Consejero no encontrado"
                 }), 404
 
-        # ==========================================
-        # VALIDAR REUNION
-        # ==========================================
-        if "idReunion" in datos:
-
-            reunion = reuniones_collection.find_one({
-                "_id": ObjectId(datos["idReunion"])
-            })
-
-            if not reunion:
-
-                return jsonify({
-                    "error": "Reunion no encontrada"
-                }), 404
-
-        # ==========================================
-        # ACTUALIZAR
-        # ==========================================
-        resultado = citaciones_collection.update_one(
+        resultado = comision_consejeros_collection.update_one(
             {"_id": ObjectId(id)},
             {"$set": datos}
         )
@@ -288,11 +335,11 @@ def actualizar_citacion(id):
         if resultado.matched_count == 0:
 
             return jsonify({
-                "error": "Citacion no encontrada"
+                "error": "Relacion no encontrada"
             }), 404
 
         return jsonify({
-            "mensaje": "Citacion actualizada correctamente"
+            "mensaje": "Relacion actualizada correctamente"
         }), 200
 
     except Exception as e:
@@ -305,21 +352,22 @@ def actualizar_citacion(id):
 # ==========================================
 # ELIMINAR
 # ==========================================
-def eliminar_citacion(id):
+def eliminar_comision_consejero(id):
+
     try:
 
-        resultado = citaciones_collection.delete_one({
+        resultado = comision_consejeros_collection.delete_one({
             "_id": ObjectId(id)
         })
 
         if resultado.deleted_count == 0:
 
             return jsonify({
-                "error": "Citacion no encontrada"
+                "error": "Relacion no encontrada"
             }), 404
 
         return jsonify({
-            "mensaje": "Citacion eliminada correctamente"
+            "mensaje": "Relacion eliminada correctamente"
         }), 200
 
     except Exception as e:
