@@ -35,7 +35,7 @@ consejero_bp.route(
 # OBTENER POR ID
 # =========================
 consejero_bp.route(
-    "/consejeros/<id>",
+    "/consejeros/<int:id>",
     methods=["GET"]
 )(obtener_consejero_por_id)
 
@@ -43,7 +43,7 @@ consejero_bp.route(
 # ACTUALIZAR
 # =========================
 consejero_bp.route(
-    "/consejeros/<id>",
+    "/consejeros/<int:id>",
     methods=["PUT"]
 )(actualizar_consejero)
 
@@ -51,6 +51,6 @@ consejero_bp.route(
 # ELIMINAR
 # =========================
 consejero_bp.route(
-    "/consejeros/<id>",
+    "/consejeros/<int:id>",
     methods=["DELETE"]
 )(eliminar_consejero)

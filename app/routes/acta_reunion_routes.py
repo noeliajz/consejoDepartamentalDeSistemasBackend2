@@ -27,18 +27,18 @@ acta_reunion_bp.route(
 
 # OBTENER POR ID
 acta_reunion_bp.route(
-    "/actas-reunion/<id>",
+    "/actas-reunion/<int:id>",
     methods=["GET"]
 )(obtener_acta_reunion_por_id)
 
 # ACTUALIZAR
 acta_reunion_bp.route(
-    "/actas-reunion/<id>",
+    "/actas-reunion/<int:id>",
     methods=["PUT"]
 )(actualizar_acta_reunion)
 
 # ELIMINAR
 acta_reunion_bp.route(
-    "/actas-reunion/<id>",
+    "/actas-reunion/<int:id>",
     methods=["DELETE"]
 )(eliminar_acta_reunion)

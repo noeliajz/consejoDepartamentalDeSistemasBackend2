@@ -1,3 +1,10 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-actas_reunion_collection = db["actas_reunion"]
+@dataclass
+class ActaReunionModel:
+    ID_Acta: Optional[int]
+    ID_Reunion: int
+    fechaGeneracion: str
+    estado: int = 0  # 0: Pendiente, 1: Aprobada/Firmada
+    contenido: Optional[str] = None

@@ -27,7 +27,7 @@ constitucion_bp.route(
 
 # OBTENER UNA
 constitucion_bp.route(
-    "/constituciones/<id>",
+    "/constituciones/<int:id>",
     methods=["GET"]
 )(
     obtener_constitucion_por_id
@@ -43,7 +43,7 @@ constitucion_bp.route(
 
 # ACTUALIZAR
 constitucion_bp.route(
-    "/constituciones/<id>",
+    "/constituciones/<int:id>",
     methods=["PUT"]
 )(
     actualizar_constitucion
@@ -51,7 +51,7 @@ constitucion_bp.route(
 
 # ELIMINAR
 constitucion_bp.route(
-    "/constituciones/<id>",
+    "/constituciones/<int:id>",
     methods=["DELETE"]
 )(
     eliminar_constitucion

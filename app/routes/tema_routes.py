@@ -23,11 +23,11 @@ tema_bp.route(
 )(obtener_temas)
 
 tema_bp.route(
-    "/temas/<id>",
+    "/temas/<int:id>",
     methods=["PUT"]
 )(actualizar_tema)
 
 tema_bp.route(
-    "/temas/<id>",
+    "/temas/<int:id>",
     methods=["DELETE"]
 )(eliminar_tema)

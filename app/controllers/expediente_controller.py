@@ -1,153 +1,232 @@
 from flask import request, jsonify
-from bson import ObjectId
+from app.config.db import query, execute
 
-from app.models.expediente_model import expedientes
-
-
+# ==========================================
 # CREAR
+# ==========================================
 def crear_expediente():
     try:
         data = request.json
 
-        expediente = {
-            # IDENTIFICACIÓN
-            "numero": data.get("numero"),
-            "fecha_creacion": data.get("fecha_creacion"),
-            "fecha_ingreso": data.get("fecha_ingreso"),
+        id_comision = data.get("ID_Comision") or data.get("comision")
+        descripcion = data.get("descripcion")
+        categoria = data.get("categoria")  # ENUM: 'docente', 'estudiante', 'otros'
+        despacho = data.get("despacho", 0)
+        fecha_creacion = data.get("fechaCreacion") or data.get("fecha_creacion")
+        responsable = data.get("responsable") or data.get("cargado_por") or data.get("solicitante")
+        estado = data.get("estado", "Pendiente")
+        fecha_ingreso = data.get("fechaIngresoConsejo") or data.get("fecha_ingreso")
+        fecha_tratamiento = data.get("fechaTratamiento")
+        fecha_salida = data.get("fechaSalida")
+        destino_salida = data.get("destinoSalida")
 
-            # DESCRIPCIÓN
-            "categoria": data.get("categoria"),
-            "tipo_tramite": data.get("tipo_tramite"),
+        if not id_comision or not categoria:
+            return jsonify({
+                "error": "Faltan campos obligatorios (ID_Comision y categoria)"
+            }), 400
 
-            # INFORMACIÓN ADICIONAL
-            "solicitante": data.get("solicitante"),
-            "dni_legajo": data.get("dni_legajo"),
-            "descripcion": data.get("descripcion"),
-            "comision": data.get("comision"),
-            "cargado_por": data.get("cargado_por"),
+        # Validar existencia de Comisión
+        comision = query("SELECT * FROM comision WHERE ID_Comision = %s", (id_comision,), one=True)
+        if not comision:
+            return jsonify({"error": "Comisión no encontrada"}), 404
 
-            # ESTADO
-            "estado": data.get("estado", "Pendiente"),
+        sql = """
+            INSERT INTO expediente (
+                ID_Comision, descripcion, categoria, despacho, 
+                fechaCreacion, responsable, estado, fechaIngresoConsejo, 
+                fechaTratamiento, fechaSalida, destinoSalida
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            id_comision, descripcion, categoria, despacho,
+            fecha_creacion, responsable, estado, fecha_ingreso,
+            fecha_tratamiento, fecha_salida, destino_salida
+        )
 
-            # RELACIONES
-            "tema_id": data.get("tema_id"),
-            "usuario_id": data.get("usuario_id")
-        }
-
-        resultado = expedientes.insert_one(expediente)
+        id_insertado = execute(sql, params)
 
         return jsonify({
             "message": "Expediente creado correctamente",
-            "id": str(resultado.inserted_id)
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
 # OBTENER TODOS
+# ==========================================
 def obtener_expedientes():
     try:
-        lista_expedientes = []
+        sql = """
+            SELECT 
+                e.ID_Expediente,
+                e.ID_Comision,
+                e.descripcion,
+                e.categoria,
+                e.despacho,
+                e.fechaCreacion,
+                e.responsable,
+                e.estado,
+                e.fechaIngresoConsejo,
+                e.fechaTratamiento,
+                e.fechaSalida,
+                e.destinoSalida,
+                c.nombre AS comision_nombre
+            FROM expediente e
+            LEFT JOIN comision c ON e.ID_Comision = c.ID_Comision
+        """
+        rows = query(sql)
 
-        for expediente in expedientes.find():
-            expediente["_id"] = str(expediente["_id"])
-            lista_expedientes.append(expediente)
+        expedientes = []
+        for row in rows:
+            item = {
+                "ID_Expediente": row["ID_Expediente"],
+                "ID_Comision": row["ID_Comision"],
+                "descripcion": row["descripcion"],
+                "categoria": row["categoria"],
+                "despacho": bool(row["despacho"]),
+                "fechaCreacion": str(row["fechaCreacion"]) if row["fechaCreacion"] else None,
+                "responsable": row["responsable"],
+                "estado": row["estado"],
+                "fechaIngresoConsejo": str(row["fechaIngresoConsejo"]) if row["fechaIngresoConsejo"] else None,
+                "fechaTratamiento": str(row["fechaTratamiento"]) if row["fechaTratamiento"] else None,
+                "fechaSalida": str(row["fechaSalida"]) if row["fechaSalida"] else None,
+                "destinoSalida": row["destinoSalida"],
+                "comision": {
+                    "ID_Comision": row["ID_Comision"],
+                    "nombre": row["comision_nombre"]
+                } if row["ID_Comision"] else None
+            }
+            expedientes.append(item)
 
-        return jsonify(lista_expedientes), 200
+        return jsonify(expedientes), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
 # OBTENER POR ID
+# ==========================================
 def obtener_expediente_por_id(id):
     try:
-        expediente = expedientes.find_one({
-            "_id": ObjectId(id)
-        })
+        sql = """
+            SELECT 
+                e.ID_Expediente,
+                e.ID_Comision,
+                e.descripcion,
+                e.categoria,
+                e.despacho,
+                e.fechaCreacion,
+                e.responsable,
+                e.estado,
+                e.fechaIngresoConsejo,
+                e.fechaTratamiento,
+                e.fechaSalida,
+                e.destinoSalida,
+                c.nombre AS comision_nombre
+            FROM expediente e
+            LEFT JOIN comision c ON e.ID_Comision = c.ID_Comision
+            WHERE e.ID_Expediente = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        if not expediente:
-            return jsonify({
-                "error": "Expediente no encontrado"
-            }), 404
+        if not row:
+            return jsonify({"error": "Expediente no encontrado"}), 404
 
-        expediente["_id"] = str(expediente["_id"])
+        expediente = {
+            "ID_Expediente": row["ID_Expediente"],
+            "ID_Comision": row["ID_Comision"],
+            "descripcion": row["descripcion"],
+            "categoria": row["categoria"],
+            "despacho": bool(row["despacho"]),
+            "fechaCreacion": str(row["fechaCreacion"]) if row["fechaCreacion"] else None,
+            "responsable": row["responsable"],
+            "estado": row["estado"],
+            "fechaIngresoConsejo": str(row["fechaIngresoConsejo"]) if row["fechaIngresoConsejo"] else None,
+            "fechaTratamiento": str(row["fechaTratamiento"]) if row["fechaTratamiento"] else None,
+            "fechaSalida": str(row["fechaSalida"]) if row["fechaSalida"] else None,
+            "destinoSalida": row["destinoSalida"],
+            "comision": {
+                "ID_Comision": row["ID_Comision"],
+                "nombre": row["comision_nombre"]
+            } if row["ID_Comision"] else None
+        }
 
         return jsonify(expediente), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
 # ACTUALIZAR
+# ==========================================
 def actualizar_expediente(id):
     try:
         data = request.json
 
-        expediente_actualizado = {
-            "numero": data.get("numero"),
-            "fecha_creacion": data.get("fecha_creacion"),
-            "fecha_ingreso": data.get("fecha_ingreso"),
+        expediente = query("SELECT * FROM expediente WHERE ID_Expediente = %s", (id,), one=True)
+        if not expediente:
+            return jsonify({"error": "Expediente no encontrado"}), 404
 
-            "categoria": data.get("categoria"),
-            "tipo_tramite": data.get("tipo_tramite"),
+        id_comision = data.get("ID_Comision") or data.get("comision")
+        if id_comision:
+            comision = query("SELECT * FROM comision WHERE ID_Comision = %s", (id_comision,), one=True)
+            if not comision:
+                return jsonify({"error": "Comisión no encontrada"}), 404
 
-            "solicitante": data.get("solicitante"),
-            "dni_legajo": data.get("dni_legajo"),
+        campos = []
+        params = []
+
+        mapeo = {
+            "ID_Comision": id_comision,
             "descripcion": data.get("descripcion"),
-            "comision": data.get("comision"),
-            "cargado_por": data.get("cargado_por"),
-
+            "categoria": data.get("categoria"),
+            "despacho": data.get("despacho"),
+            "fechaCreacion": data.get("fechaCreacion") or data.get("fecha_creacion"),
+            "responsable": data.get("responsable") or data.get("cargado_por") or data.get("solicitante"),
             "estado": data.get("estado"),
-
-            "tema_id": data.get("tema_id"),
-            "usuario_id": data.get("usuario_id")
+            "fechaIngresoConsejo": data.get("fechaIngresoConsejo") or data.get("fecha_ingreso"),
+            "fechaTratamiento": data.get("fechaTratamiento"),
+            "fechaSalida": data.get("fechaSalida"),
+            "destinoSalida": data.get("destinoSalida")
         }
 
-        resultado = expedientes.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": expediente_actualizado}
-        )
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-        if resultado.matched_count == 0:
-            return jsonify({
-                "error": "Expediente no encontrado"
-            }), 404
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-        return jsonify({
-            "message": "Expediente actualizado correctamente"
-        }), 200
+        params.append(id)
+        sql = f"UPDATE expediente SET {', '.join(campos)} WHERE ID_Expediente = %s"
+
+        execute(sql, params)
+
+        return jsonify({"message": "Expediente actualizado correctamente"}), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
 # ELIMINAR
+# ==========================================
 def eliminar_expediente(id):
     try:
-        resultado = expedientes.delete_one({
-            "_id": ObjectId(id)
-        })
+        expediente = query("SELECT * FROM expediente WHERE ID_Expediente = %s", (id,), one=True)
+        if not expediente:
+            return jsonify({"error": "Expediente no encontrado"}), 404
 
-        if resultado.deleted_count == 0:
-            return jsonify({
-                "error": "Expediente no encontrado"
-            }), 404
+        execute("DELETE FROM expediente WHERE ID_Expediente = %s", (id,))
 
-        return jsonify({
-            "message": "Expediente eliminado correctamente"
-        }), 200
+        return jsonify({"message": "Expediente eliminado correctamente"}), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

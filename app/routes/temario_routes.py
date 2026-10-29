@@ -24,16 +24,16 @@ temario_bp.route(
 )(obtener_temarios)
 
 temario_bp.route(
-    "/temarios/<id>",
+    "/temarios/<int:id>",
     methods=["GET"]
 )(obtener_temario_por_id)
 
 temario_bp.route(
-    "/temarios/<id>",
+    "/temarios/<int:id>",
     methods=["PUT"]
 )(actualizar_temario)
 
 temario_bp.route(
-    "/temarios/<id>",
+    "/temarios/<int:id>",
     methods=["DELETE"]
 )(eliminar_temario)

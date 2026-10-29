@@ -1,3 +1,9 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-actas_proclamacion_collection = db["actas_proclamacion"]
+@dataclass
+class ActaProclamacionModel:
+    ID_ActaProclamacion: Optional[int]
+    ID_Consejero: int
+    fechaProclamacion: str
+    observaciones: Optional[str] = None

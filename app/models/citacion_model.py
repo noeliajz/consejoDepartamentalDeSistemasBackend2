@@ -1,3 +1,10 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-citaciones_collection = db["citaciones"]
+@dataclass
+class CitacionModel:
+    ID_Citacion: Optional[int]
+    ID_Reunion: int
+    ID_Consejero: int
+    fechaEnvio: str
+    estado: str = "Enviado"  # 'Enviado', 'Notificado', 'Confirmado'

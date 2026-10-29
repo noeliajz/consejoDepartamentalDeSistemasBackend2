@@ -1,3 +1,15 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-usuarios_collection = db["usuarios"]
+@dataclass
+class UsuarioModel:
+    ID_Usuario: Optional[int]
+    nombre: str
+    apellido: str
+    mail: str
+    claustro: str
+    tipo: str  # 'titular', 'suplente'
+    rol: str   # 'director', 'secretaria', 'consejero'
+    celular: Optional[str] = None
+    estado: str = "Activo"  # 'Activo', 'Baja'
+    mandato_anios: Optional[int] = None

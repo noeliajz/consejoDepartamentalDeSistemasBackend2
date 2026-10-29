@@ -1,6 +1,11 @@
-# app/models/licencia_model.py
+from dataclasses import dataclass
+from typing import Optional
 
-from app.config.db import db
-
-# Colección MongoDB
-licencias_collection = db["licencias"]
+@dataclass
+class LicenciaModel:
+    ID_Licencia: Optional[int]
+    ID_Consejero: int
+    fechaInicio: str
+    fechaFin: str
+    motivo: Optional[str] = None
+    estado: str = "Pendiente"

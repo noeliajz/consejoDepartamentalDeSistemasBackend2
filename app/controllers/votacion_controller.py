@@ -1,366 +1,238 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.votacion_model import votaciones_collection
-from app.models.tema_model import temas_collection
-from app.models.consejero_model import consejeros_collection
-
-
-# ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # OTROS
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
-
+from app.config.db import query, execute
 
 # =====================================================
 # OBTENER TODAS
 # =====================================================
 def obtener_votaciones():
-
     try:
+        sql = """
+            SELECT 
+                v.ID_Votacion,
+                v.ID_Consejero,
+                v.ID_Tema,
+                v.voto,
+                v.fecha,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido,
+                t.descripcion AS tema_descripcion,
+                t.estado AS tema_estado
+            FROM votacion v
+            LEFT JOIN consejero c ON v.ID_Consejero = c.ID_Consejero
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+            LEFT JOIN tema t ON v.ID_Tema = t.ID_Tema
+            ORDER BY v.ID_Votacion DESC
+        """
+        rows = query(sql)
 
         votaciones = []
-
-        for votacion in votaciones_collection.find().sort("_id", -1):
-
-            votacion = convertir_objectid(votacion)
-
-            # ==========================================
-            # RELACION TEMA
-            # ==========================================
-            tema = None
-
-            if "idTema" in votacion:
-
-                tema = temas_collection.find_one({
-                    "_id": ObjectId(votacion["idTema"])
-                })
-
-                if tema:
-
-                    tema = convertir_objectid(tema)
-
-            # ==========================================
-            # RELACION CONSEJERO
-            # ==========================================
-            consejero = None
-
-            if "idConsejero" in votacion:
-
-                consejero = consejeros_collection.find_one({
-                    "_id": ObjectId(votacion["idConsejero"])
-                })
-
-                if consejero:
-
-                    consejero = convertir_objectid(consejero)
-
-            # ==========================================
-            # AGREGAR RELACIONES
-            # ==========================================
-            votacion["tema"] = tema
-            votacion["consejero"] = consejero
-
-            votaciones.append(votacion)
+        for row in rows:
+            item = {
+                "ID_Votacion": row["ID_Votacion"],
+                "ID_Consejero": row["ID_Consejero"],
+                "ID_Tema": row["ID_Tema"],
+                "voto": row["voto"],
+                "fecha": str(row["fecha"]) if row["fecha"] else None,
+                "consejero": {
+                    "ID_Consejero": row["ID_Consejero"],
+                    "nombre": row["consejero_nombre"],
+                    "apellido": row["consejero_apellido"]
+                } if row["ID_Consejero"] else None,
+                "tema": {
+                    "ID_Tema": row["ID_Tema"],
+                    "descripcion": row["tema_descripcion"],
+                    "estado": row["tema_estado"]
+                } if row["ID_Tema"] else None
+            }
+            votaciones.append(item)
 
         return jsonify(votaciones), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =====================================================
-# OBTENER UNA
+# OBTENER UNA POR ID
 # =====================================================
 def obtener_votacion(id):
-
     try:
+        sql = """
+            SELECT 
+                v.ID_Votacion,
+                v.ID_Consejero,
+                v.ID_Tema,
+                v.voto,
+                v.fecha,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido,
+                t.descripcion AS tema_descripcion,
+                t.estado AS tema_estado
+            FROM votacion v
+            LEFT JOIN consejero c ON v.ID_Consejero = c.ID_Consejero
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+            LEFT JOIN tema t ON v.ID_Tema = t.ID_Tema
+            WHERE v.ID_Votacion = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        votacion = votaciones_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        if not row:
+            return jsonify({"error": "Votación no encontrada"}), 404
 
-        if not votacion:
-
-            return jsonify({
-                "error": "Votación no encontrada"
-            }), 404
-
-        votacion = convertir_objectid(votacion)
-
-        # ==========================================
-        # RELACION TEMA
-        # ==========================================
-        tema = None
-
-        if "idTema" in votacion:
-
-            tema = temas_collection.find_one({
-                "_id": ObjectId(votacion["idTema"])
-            })
-
-            if tema:
-
-                tema = convertir_objectid(tema)
-
-        # ==========================================
-        # RELACION CONSEJERO
-        # ==========================================
-        consejero = None
-
-        if "idConsejero" in votacion:
-
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(votacion["idConsejero"])
-            })
-
-            if consejero:
-
-                consejero = convertir_objectid(consejero)
-
-        # ==========================================
-        # AGREGAR RELACIONES
-        # ==========================================
-        votacion["tema"] = tema
-        votacion["consejero"] = consejero
+        votacion = {
+            "ID_Votacion": row["ID_Votacion"],
+            "ID_Consejero": row["ID_Consejero"],
+            "ID_Tema": row["ID_Tema"],
+            "voto": row["voto"],
+            "fecha": str(row["fecha"]) if row["fecha"] else None,
+            "consejero": {
+                "ID_Consejero": row["ID_Consejero"],
+                "nombre": row["consejero_nombre"],
+                "apellido": row["consejero_apellido"]
+            } if row["ID_Consejero"] else None,
+            "tema": {
+                "ID_Tema": row["ID_Tema"],
+                "descripcion": row["tema_descripcion"],
+                "estado": row["tema_estado"]
+            } if row["ID_Tema"] else None
+        }
 
         return jsonify(votacion), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =====================================================
 # CREAR
 # =====================================================
 def crear_votacion():
-
     try:
-
         data = request.json
 
-        # ==========================================
-        # VALIDAR CAMPOS
-        # ==========================================
-        campos = [
-            "idTema",
-            "idConsejero",
-            "fecha",
-            "favor",
-            "contra",
-            "abstencion",
-            "total",
-            "resultado"
-        ]
+        id_tema = data.get("ID_Tema") or data.get("idTema")
+        id_consejero = data.get("ID_Consejero") or data.get("idConsejero")
+        voto = data.get("voto")  # 'favor', 'contra' o 'abstencion'
+        fecha = data.get("fecha")
 
-        for campo in campos:
+        if not id_tema or not id_consejero or not voto:
+            return jsonify({
+                "error": "Faltan campos obligatorios (ID_Tema, ID_Consejero, voto)"
+            }), 400
 
-            if campo not in data:
-
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
-
-        # ==========================================
-        # VALIDAR TEMA
-        # ==========================================
-        tema = temas_collection.find_one({
-            "_id": ObjectId(data["idTema"])
-        })
-
+        # Validar Tema
+        tema = query("SELECT * FROM tema WHERE ID_Tema = %s", (id_tema,), one=True)
         if not tema:
+            return jsonify({"error": "Tema no encontrado"}), 404
 
-            return jsonify({
-                "error": "Tema no encontrado"
-            }), 404
-
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        consejero = consejeros_collection.find_one({
-            "_id": ObjectId(data["idConsejero"])
-        })
-
+        # Validar Consejero
+        consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id_consejero,), one=True)
         if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
 
-            return jsonify({
-                "error": "Consejero no encontrado"
-            }), 404
-
-        # ==========================================
-        # CREAR VOTACION
-        # ==========================================
-        nueva_votacion = {
-
-            "idTema": data.get("idTema"),
-
-            "idConsejero": data.get("idConsejero"),
-
-            "fecha": data.get("fecha"),
-
-            "favor": data.get("favor", 0),
-
-            "contra": data.get("contra", 0),
-
-            "abstencion": data.get("abstencion", 0),
-
-            "total": data.get("total", 0),
-
-            "resultado": data.get("resultado")
-        }
-
-        resultado = votaciones_collection.insert_one(
-            nueva_votacion
-        )
+        sql = """
+            INSERT INTO votacion (ID_Consejero, ID_Tema, voto, fecha)
+            VALUES (%s, %s, %s, %s)
+        """
+        id_insertado = execute(sql, (id_consejero, id_tema, voto, fecha))
 
         return jsonify({
-            "message": "Votación creada",
-            "id": str(resultado.inserted_id)
+            "message": "Votación registrada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =====================================================
 # EDITAR
 # =====================================================
 def editar_votacion(id):
-
     try:
-
         data = request.json
 
-        # ==========================================
-        # VALIDAR TEMA
-        # ==========================================
-        if "idTema" in data:
+        votacion = query("SELECT * FROM votacion WHERE ID_Votacion = %s", (id,), one=True)
+        if not votacion:
+            return jsonify({"error": "Votación no encontrada"}), 404
 
-            tema = temas_collection.find_one({
-                "_id": ObjectId(data["idTema"])
-            })
-
+        id_tema = data.get("ID_Tema") or data.get("idTema")
+        if id_tema:
+            tema = query("SELECT * FROM tema WHERE ID_Tema = %s", (id_tema,), one=True)
             if not tema:
+                return jsonify({"error": "Tema no encontrado"}), 404
 
-                return jsonify({
-                    "error": "Tema no encontrado"
-                }), 404
-
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        if "idConsejero" in data:
-
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(data["idConsejero"])
-            })
-
+        id_consejero = data.get("ID_Consejero") or data.get("idConsejero")
+        if id_consejero:
+            consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id_consejero,), one=True)
             if not consejero:
+                return jsonify({"error": "Consejero no encontrado"}), 404
 
-                return jsonify({
-                    "error": "Consejero no encontrado"
-                }), 404
+        campos = []
+        params = []
 
-        # ==========================================
-        # ACTUALIZAR
-        # ==========================================
-        resultado = votaciones_collection.update_one(
-            {
-                "_id": ObjectId(id)
-            },
-            {
-                "$set": data
-            }
-        )
+        mapeo = {
+            "ID_Consejero": id_consejero,
+            "ID_Tema": id_tema,
+            "voto": data.get("voto"),
+            "fecha": data.get("fecha")
+        }
 
-        if resultado.matched_count == 0:
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-            return jsonify({
-                "error": "Votación no encontrada"
-            }), 404
+        if not campos:
+            return jsonify({"error": "No hay campos para actualizar"}), 400
 
-        return jsonify({
-            "message": "Votación actualizada"
-        }), 200
+        params.append(id)
+        sql = f"UPDATE votacion SET {', '.join(campos)} WHERE ID_Votacion = %s"
+
+        execute(sql, params)
+
+        return jsonify({"message": "Votación actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =====================================================
 # ELIMINAR
 # =====================================================
 def eliminar_votacion(id):
-
     try:
+        votacion = query("SELECT * FROM votacion WHERE ID_Votacion = %s", (id,), one=True)
+        if not votacion:
+            return jsonify({"error": "Votación no encontrada"}), 404
 
-        resultado = votaciones_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM votacion WHERE ID_Votacion = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Votación no encontrada"
-            }), 404
-
-        return jsonify({
-            "message": "Votación eliminada"
-        }), 200
+        return jsonify({"message": "Votación eliminada correctamente"}), 200
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        return jsonify({
-            "error": str(e)
-        }), 500
+
+# =====================================================
+# OBTENER RESULTADOS POR TEMA (CONSULTA A LA VISTA SQL)
+# =====================================================
+def obtener_resultados_por_tema(id_tema):
+    try:
+        sql = "SELECT * FROM resultadovotacionportema WHERE ID_Tema = %s"
+        resultado = query(sql, (id_tema,), one=True)
+
+        if not resultado:
+            return jsonify({
+                "ID_Tema": id_tema,
+                "favor": 0,
+                "contra": 0,
+                "abstencion": 0,
+                "total": 0,
+                "resultado": "Sin votos"
+            }), 200
+
+        return jsonify(resultado), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

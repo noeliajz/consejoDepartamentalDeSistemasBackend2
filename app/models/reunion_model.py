@@ -1,3 +1,11 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-reuniones_collection = db["reuniones"]
+@dataclass
+class ReunionModel:
+    ID_Reunion: Optional[int]
+    fecha: str
+    hora: Optional[str] = None
+    lugar: Optional[str] = None
+    tipo: str = "Ordinaria"  # 'Ordinaria', 'Extraordinaria'
+    estado: str = "Programada"

@@ -1,87 +1,102 @@
 from flask import request, jsonify
-from bson.objectid import ObjectId
+from app.config.db import query, execute
 
-from app.models.usuario_model import usuarios_collection
-
-
+# ==========================================
 # CREAR USUARIO
+# ==========================================
 def crear_usuario():
     try:
         datos = request.json
 
-        nuevo_usuario = {
-            "nombre": datos.get("nombre"),
-            "apellido": datos.get("apellido"),
-            "mail": datos.get("mail"),
-            "celular": datos.get("celular"),
-            "claustro": datos.get("claustro"),
-            "tipo": datos.get("tipo"),  # titular o suplente
-            "rol": datos.get("rol"),  # admin o user
-            "estado": datos.get("estado"),  # activo o baja
-            "mandato_anios": datos.get("mandato_anios")
-        }
+        nombre = datos.get("nombre")
+        apellido = datos.get("apellido")
+        mail = datos.get("mail")
+        celular = datos.get("celular")
+        claustro = datos.get("claustro")
+        tipo = datos.get("tipo")  # 'titular' o 'suplente'
+        rol = datos.get("rol")    # 'director', 'secretaria', 'consejero'
+        estado = datos.get("estado", "Activo")  # 'Activo' o 'Baja'
+        mandato_anios = datos.get("mandato_anios")
 
-        resultado = usuarios_collection.insert_one(
-            nuevo_usuario
+        if not nombre or not apellido or not mail or not claustro or not tipo or not rol:
+            return jsonify({
+                "error": "Faltan campos obligatorios (nombre, apellido, mail, claustro, tipo, rol)"
+            }), 400
+
+        # Verificar correo único
+        usuario_existente = query("SELECT * FROM usuario WHERE mail = %s", (mail,), one=True)
+        if usuario_existente:
+            return jsonify({"error": "El email ya está registrado"}), 400
+
+        sql = """
+            INSERT INTO usuario (
+                nombre, apellido, mail, celular, 
+                claustro, tipo, rol, estado, mandato_anios
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            nombre, apellido, mail, celular,
+            claustro, tipo, rol, estado, mandato_anios
         )
+
+        id_insertado = execute(sql, params)
 
         return jsonify({
             "mensaje": "Usuario creado correctamente",
-            "id": str(resultado.inserted_id)
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
-# OBTENER TODOS LOS USUARIOS
+# ==========================================
+# OBTENER TODOS
+# ==========================================
 def obtener_usuarios():
     try:
-        usuarios = []
-
-        for usuario in usuarios_collection.find():
-            usuario["_id"] = str(usuario["_id"])
-
-            usuarios.append(usuario)
+        sql = "SELECT * FROM usuario"
+        usuarios = query(sql)
 
         return jsonify(usuarios), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
-# OBTENER USUARIO POR ID
+# ==========================================
+# OBTENER POR ID
+# ==========================================
 def obtener_usuario_por_id(id):
     try:
-        usuario = usuarios_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        sql = "SELECT * FROM usuario WHERE ID_Usuario = %s"
+        usuario = query(sql, (id,), one=True)
 
         if not usuario:
-            return jsonify({
-                "mensaje": "Usuario no encontrado"
-            }), 404
-
-        usuario["_id"] = str(usuario["_id"])
+            return jsonify({"mensaje": "Usuario no encontrado"}), 404
 
         return jsonify(usuario), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
 # ACTUALIZAR USUARIO
+# ==========================================
 def actualizar_usuario(id):
     try:
         datos = request.json
 
-        usuario_actualizado = {
+        usuario = query("SELECT * FROM usuario WHERE ID_Usuario = %s", (id,), one=True)
+        if not usuario:
+            return jsonify({"mensaje": "Usuario no encontrado"}), 404
+
+        campos = []
+        params = []
+
+        mapeo = {
             "nombre": datos.get("nombre"),
             "apellido": datos.get("apellido"),
             "mail": datos.get("mail"),
@@ -93,43 +108,37 @@ def actualizar_usuario(id):
             "mandato_anios": datos.get("mandato_anios")
         }
 
-        resultado = usuarios_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": usuario_actualizado}
-        )
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-        if resultado.matched_count == 0:
-            return jsonify({
-                "mensaje": "Usuario no encontrado"
-            }), 404
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-        return jsonify({
-            "mensaje": "Usuario actualizado correctamente"
-        }), 200
+        params.append(id)
+        sql = f"UPDATE usuario SET {', '.join(campos)} WHERE ID_Usuario = %s"
+
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Usuario actualizado correctamente"}), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
 # ELIMINAR USUARIO
+# ==========================================
 def eliminar_usuario(id):
     try:
-        resultado = usuarios_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        usuario = query("SELECT * FROM usuario WHERE ID_Usuario = %s", (id,), one=True)
+        if not usuario:
+            return jsonify({"mensaje": "Usuario no encontrado"}), 404
 
-        if resultado.deleted_count == 0:
-            return jsonify({
-                "mensaje": "Usuario no encontrado"
-            }), 404
+        execute("DELETE FROM usuario WHERE ID_Usuario = %s", (id,))
 
-        return jsonify({
-            "mensaje": "Usuario eliminado correctamente"
-        }), 200
+        return jsonify({"mensaje": "Usuario eliminado correctamente"}), 200
 
     except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

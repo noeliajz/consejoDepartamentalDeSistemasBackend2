@@ -1,109 +1,67 @@
 from flask import request, jsonify
-from app.models.usuario_model import usuarios_collection
-
-import bcrypt
-import jwt
-import datetime
-
-SECRET_KEY = "mi_clave_super_secreta"
+from app.config.db import query, execute
 
 
-# REGISTRO
-def registrarse():
-    try:
-        datos = request.json
+def iniciar_sesion():
+    data = request.get_json() or {}
+    mail = data.get("mail") or data.get("email")
 
-        email = datos.get("email")
-        password = datos.get("password")
+    if not mail:
+        return jsonify({"error": "El correo es obligatorio"}), 400
 
-        # verificar si existe
-        usuario_existente = usuarios_collection.find_one({
-            "email": email
-        })
+    # Buscar usuario en la base de datos MySQL por su mail
+    sql = "SELECT * FROM usuario WHERE mail = %s AND estado = 'Activo'"
+    usuarios = query(sql, (mail,))
 
-        if usuario_existente:
-            return jsonify({
-                "error": "El usuario ya existe"
-            }), 400
+    if not usuarios:
+        return jsonify({"error": "Usuario no encontrado o inactivo"}), 401
 
-        # hash password
-        password_hash = bcrypt.hashpw(
-            password.encode("utf-8"),
-            bcrypt.gensalt()
-        )
+    usuario = usuarios[0]
 
-        nuevo_usuario = {
-            "nombre": datos.get("nombre"),
-            "email": email,
-            "password": password_hash.decode("utf-8"),
-            "rol": datos.get("rol", "usuario")
+    return jsonify({
+        "mensaje": "Login exitoso",
+        "usuario": {
+            "id": usuario["ID_Usuario"],
+            "nombre": usuario["nombre"],
+            "apellido": usuario["apellido"],
+            "mail": usuario["mail"],
+            "rol": usuario["rol"],
+            "tipo": usuario["tipo"],
+            "claustro": usuario["claustro"]
         }
-
-        resultado = usuarios_collection.insert_one(
-            nuevo_usuario
-        )
-
-        return jsonify({
-            "mensaje": "Usuario registrado",
-            "id": str(resultado.inserted_id)
-        }), 201
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+    }), 200
 
 
-# LOGIN
-def login():
-    try:
-        datos = request.json
+def registrarse():
+    data = request.get_json() or {}
 
-        email = datos.get("email")
-        password = datos.get("password")
+    nombre = data.get("nombre")
+    apellido = data.get("apellido")
+    mail = data.get("mail")
+    celular = data.get("celular")
+    claustro = data.get("claustro")
+    tipo = data.get("tipo", "titular")
+    rol = data.get("rol", "consejero")
+    mandato_anios = data.get("mandato_anios", 1)
 
-        usuario = usuarios_collection.find_one({
-            "email": email
-        })
+    if not nombre or not apellido or not mail:
+        return jsonify({"error": "Nombre, apellido y mail son campos requeridos"}), 400
 
-        if not usuario:
-            return jsonify({
-                "error": "Credenciales inválidas"
-            }), 401
+    # Verificar si el usuario ya existe
+    existente = query("SELECT ID_Usuario FROM usuario WHERE mail = %s", (mail,))
+    if existente:
+        return jsonify({"error": "El correo ya se encuentra registrado"}), 400
 
-        password_correcta = bcrypt.checkpw(
-            password.encode("utf-8"),
-            usuario["password"].encode("utf-8")
-        )
+    sql = """
+        INSERT INTO usuario 
+        (nombre, apellido, mail, celular, claustro, tipo, rol, estado, mandato_anios) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'Activo', %s)
+    """
+    params = (nombre, apellido, mail, celular, claustro, tipo, rol, mandato_anios)
 
-        if not password_correcta:
-            return jsonify({
-                "error": "Credenciales inválidas"
-            }), 401
+    id_creado = execute(sql, params)
 
-        token = jwt.encode(
-            {
-                "id": str(usuario["_id"]),
-                "email": usuario["email"],
-                "rol": usuario["rol"],
-                "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=12)
-            },
-            SECRET_KEY,
-            algorithm="HS256"
-        )
-
-        return jsonify({
-            "mensaje": "Login exitoso",
-            "token": token,
-            "usuario": {
-                "id": str(usuario["_id"]),
-                "nombre": usuario["nombre"],
-                "email": usuario["email"],
-                "rol": usuario["rol"]
-            }
-        }), 200
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e)
-        }), 500
+    return jsonify({
+        "mensaje": "Usuario registrado exitosamente",
+        "id": id_creado
+    }), 201

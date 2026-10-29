@@ -1,3 +1,8 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-comisiones_collection = db["comisiones"]
+@dataclass
+class ComisionModel:
+    ID_Comision: Optional[int]
+    nombre: str
+    descripcion: Optional[str] = None

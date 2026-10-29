@@ -35,7 +35,7 @@ licencia_bp.route(
 # OBTENER POR ID
 # =========================
 licencia_bp.route(
-    "/licencias/<id>",
+    "/licencias/<int:id>",
     methods=["GET"]
 )(obtener_licencia_por_id)
 
@@ -43,7 +43,7 @@ licencia_bp.route(
 # ACTUALIZAR
 # =========================
 licencia_bp.route(
-    "/licencias/<id>",
+    "/licencias/<int:id>",
     methods=["PUT"]
 )(actualizar_licencia)
 
@@ -51,6 +51,6 @@ licencia_bp.route(
 # ELIMINAR
 # =========================
 licencia_bp.route(
-    "/licencias/<id>",
+    "/licencias/<int:id>",
     methods=["DELETE"]
 )(eliminar_licencia)

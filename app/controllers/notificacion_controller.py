@@ -1,383 +1,190 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.notificacion_model import (
-    notificaciones_collection
-)
-
-from app.models.consejero_model import (
-    consejeros_collection
-)
-
-from app.models.citacion_model import (
-    citaciones_collection
-)
-
-
-# ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # OTROS
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
-
+from app.config.db import query, execute
 
 # ==========================================
 # CREAR
 # ==========================================
 def crear_notificacion():
-
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CAMPOS
-        # ==========================================
-        campos = [
-            "idConsejero",
-            "idCitacion",
-            "contenido",
-            "fechaEnvio",
-            "canal",
-            "estado"
-        ]
+        id_citacion = datos.get("ID_Citacion") or datos.get("idCitacion")
+        contenido = datos.get("contenido")
+        fecha_envio = datos.get("fechaEnvio")
+        canal = datos.get("canal")
+        estado = datos.get("estado")
 
-        for campo in campos:
+        if not id_citacion:
+            return jsonify({"error": "Falta el campo obligatorio ID_Citacion"}), 400
 
-            if campo not in datos:
-
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
-
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        consejero = consejeros_collection.find_one({
-            "_id": ObjectId(datos["idConsejero"])
-        })
-
-        if not consejero:
-
-            return jsonify({
-                "error": "Consejero no encontrado"
-            }), 404
-
-        # ==========================================
-        # VALIDAR CITACION
-        # ==========================================
-        citacion = citaciones_collection.find_one({
-            "_id": ObjectId(datos["idCitacion"])
-        })
-
+        # Validar existencia de Citación
+        citacion = query("SELECT * FROM citacion WHERE ID_Citacion = %s", (id_citacion,), one=True)
         if not citacion:
+            return jsonify({"error": "Citación no encontrada"}), 404
 
-            return jsonify({
-                "error": "Citacion no encontrada"
-            }), 404
+        sql = """
+            INSERT INTO notificacion (ID_Citacion, contenido, fechaEnvio, canal, estado)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        params = (id_citacion, contenido, fecha_envio, canal, estado)
 
-        # ==========================================
-        # CREAR NOTIFICACION
-        # ==========================================
-        nueva_notificacion = {
-
-            "idConsejero": datos["idConsejero"],
-
-            "idCitacion": datos["idCitacion"],
-
-            "contenido": datos["contenido"],
-
-            "fechaEnvio": datos["fechaEnvio"],
-
-            "canal": datos["canal"],
-
-            "estado": datos["estado"]
-        }
-
-        resultado = notificaciones_collection.insert_one(
-            nueva_notificacion
-        )
+        id_insertado = execute(sql, params)
 
         return jsonify({
-            "mensaje": "Notificacion creada correctamente",
-            "id": str(resultado.inserted_id)
+            "mensaje": "Notificación creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER TODAS
 # ==========================================
 def obtener_notificaciones():
-
     try:
+        sql = """
+            SELECT 
+                n.ID_Notificacion,
+                n.ID_Citacion,
+                n.contenido,
+                n.fechaEnvio,
+                n.canal,
+                n.estado,
+                c.ID_Consejero,
+                c.fechaReunion AS citacion_fechaReunion
+            FROM notificacion n
+            LEFT JOIN citacion c ON n.ID_Citacion = c.ID_Citacion
+        """
+        rows = query(sql)
 
         lista = []
-
-        for notificacion in notificaciones_collection.find():
-
-            notificacion = convertir_objectid(
-                notificacion
-            )
-
-            # ==========================================
-            # RELACION CONSEJERO
-            # ==========================================
-            consejero = None
-
-            if "idConsejero" in notificacion:
-
-                consejero = consejeros_collection.find_one({
-                    "_id": ObjectId(
-                        notificacion["idConsejero"]
-                    )
-                })
-
-                if consejero:
-
-                    consejero = convertir_objectid(
-                        consejero
-                    )
-
-            # ==========================================
-            # RELACION CITACION
-            # ==========================================
-            citacion = None
-
-            if "idCitacion" in notificacion:
-
-                citacion = citaciones_collection.find_one({
-                    "_id": ObjectId(
-                        notificacion["idCitacion"]
-                    )
-                })
-
-                if citacion:
-
-                    citacion = convertir_objectid(
-                        citacion
-                    )
-
-            # ==========================================
-            # AGREGAR RELACIONES
-            # ==========================================
-            notificacion["consejero"] = consejero
-
-            notificacion["citacion"] = citacion
-
-            lista.append(notificacion)
+        for row in rows:
+            item = {
+                "ID_Notificacion": row["ID_Notificacion"],
+                "ID_Citacion": row["ID_Citacion"],
+                "contenido": row["contenido"],
+                "fechaEnvio": str(row["fechaEnvio"]) if row["fechaEnvio"] else None,
+                "canal": row["canal"],
+                "estado": row["estado"],
+                "citacion": {
+                    "ID_Citacion": row["ID_Citacion"],
+                    "ID_Consejero": row["ID_Consejero"],
+                    "fechaReunion": str(row["citacion_fechaReunion"]) if row["citacion_fechaReunion"] else None
+                } if row["ID_Citacion"] else None
+            }
+            lista.append(item)
 
         return jsonify(lista), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER POR ID
 # ==========================================
 def obtener_notificacion_por_id(id):
-
     try:
+        sql = """
+            SELECT 
+                n.ID_Notificacion,
+                n.ID_Citacion,
+                n.contenido,
+                n.fechaEnvio,
+                n.canal,
+                n.estado,
+                c.ID_Consejero,
+                c.fechaReunion AS citacion_fechaReunion
+            FROM notificacion n
+            LEFT JOIN citacion c ON n.ID_Citacion = c.ID_Citacion
+            WHERE n.ID_Notificacion = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        notificacion = notificaciones_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        if not row:
+            return jsonify({"error": "Notificación no encontrada"}), 404
 
-        if not notificacion:
-
-            return jsonify({
-                "error": "Notificacion no encontrada"
-            }), 404
-
-        notificacion = convertir_objectid(
-            notificacion
-        )
-
-        # ==========================================
-        # RELACION CONSEJERO
-        # ==========================================
-        consejero = None
-
-        if "idConsejero" in notificacion:
-
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(
-                    notificacion["idConsejero"]
-                )
-            })
-
-            if consejero:
-
-                consejero = convertir_objectid(
-                    consejero
-                )
-
-        # ==========================================
-        # RELACION CITACION
-        # ==========================================
-        citacion = None
-
-        if "idCitacion" in notificacion:
-
-            citacion = citaciones_collection.find_one({
-                "_id": ObjectId(
-                    notificacion["idCitacion"]
-                )
-            })
-
-            if citacion:
-
-                citacion = convertir_objectid(
-                    citacion
-                )
-
-        # ==========================================
-        # AGREGAR RELACIONES
-        # ==========================================
-        notificacion["consejero"] = consejero
-
-        notificacion["citacion"] = citacion
+        notificacion = {
+            "ID_Notificacion": row["ID_Notificacion"],
+            "ID_Citacion": row["ID_Citacion"],
+            "contenido": row["contenido"],
+            "fechaEnvio": str(row["fechaEnvio"]) if row["fechaEnvio"] else None,
+            "canal": row["canal"],
+            "estado": row["estado"],
+            "citacion": {
+                "ID_Citacion": row["ID_Citacion"],
+                "ID_Consejero": row["ID_Consejero"],
+                "fechaReunion": str(row["citacion_fechaReunion"]) if row["citacion_fechaReunion"] else None
+            } if row["ID_Citacion"] else None
+        }
 
         return jsonify(notificacion), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ACTUALIZAR
 # ==========================================
 def actualizar_notificacion(id):
-
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        if "idConsejero" in datos:
+        notificacion = query("SELECT * FROM notificacion WHERE ID_Notificacion = %s", (id,), one=True)
+        if not notificacion:
+            return jsonify({"error": "Notificación no encontrada"}), 404
 
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(datos["idConsejero"])
-            })
-
-            if not consejero:
-
-                return jsonify({
-                    "error": "Consejero no encontrado"
-                }), 404
-
-        # ==========================================
-        # VALIDAR CITACION
-        # ==========================================
-        if "idCitacion" in datos:
-
-            citacion = citaciones_collection.find_one({
-                "_id": ObjectId(datos["idCitacion"])
-            })
-
+        id_citacion = datos.get("ID_Citacion") or datos.get("idCitacion")
+        if id_citacion:
+            citacion = query("SELECT * FROM citacion WHERE ID_Citacion = %s", (id_citacion,), one=True)
             if not citacion:
+                return jsonify({"error": "Citación no encontrada"}), 404
 
-                return jsonify({
-                    "error": "Citacion no encontrada"
-                }), 404
+        campos = []
+        params = []
 
-        resultado = notificaciones_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": datos}
-        )
+        mapeo = {
+            "ID_Citacion": id_citacion,
+            "contenido": datos.get("contenido"),
+            "fechaEnvio": datos.get("fechaEnvio"),
+            "canal": datos.get("canal"),
+            "estado": datos.get("estado")
+        }
 
-        if resultado.matched_count == 0:
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-            return jsonify({
-                "error": "Notificacion no encontrada"
-            }), 404
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-        return jsonify({
-            "mensaje": "Notificacion actualizada correctamente"
-        }), 200
+        params.append(id)
+        sql = f"UPDATE notificacion SET {', '.join(campos)} WHERE ID_Notificacion = %s"
+
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Notificación actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ELIMINAR
 # ==========================================
 def eliminar_notificacion(id):
-
     try:
+        notificacion = query("SELECT * FROM notificacion WHERE ID_Notificacion = %s", (id,), one=True)
+        if not notificacion:
+            return jsonify({"error": "Notificación no encontrada"}), 404
 
-        resultado = notificaciones_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM notificacion WHERE ID_Notificacion = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Notificacion no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Notificacion eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Notificación eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

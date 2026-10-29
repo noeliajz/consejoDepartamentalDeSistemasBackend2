@@ -1,577 +1,262 @@
-# app/controllers/consejero_controller.py
-
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.consejero_model import (
-    consejeros_collection
-)
-
-from app.models.usuario_model import (
-    usuarios_collection
-)
-
-from app.models.asistencia_model import (
-    asistencias_collection
-)
-
-from app.models.licencia_model import (
-    licencias_collection
-)
-
+from app.config.db import query, execute
 
 # =========================
 # CREAR CONSEJERO
 # =========================
 def crear_consejero():
-
     try:
-
         datos = request.json
 
-        nuevo_consejero = {
+        id_usuario = datos.get("ID_Usuario") or datos.get("usuario_id")
+        id_constitucion = datos.get("ID_Constitucion") or datos.get("constitucion_id")
+        faltas_alternas = datos.get("faltasAlternas", 0)
+        faltas_consecutivas = datos.get("faltasConsecutivas", 0)
+        fecha_inicio_mandato = datos.get("fechaInicioMandato") or datos.get("fecha_inicio_mandato")
+        fecha_fin_mandato = datos.get("fechaFinMandato") or datos.get("fecha_fin_mandato")
 
-            "id_postulacion": datos.get(
-                "id_postulacion"
-            ),
+        if not id_usuario or not id_constitucion:
+            return jsonify({
+                "error": "Faltan campos obligatorios (ID_Usuario e ID_Constitucion)"
+            }), 400
 
-            "tipo": datos.get(
-                "tipo"
-            ),
+        # Validar existencia de Usuario
+        usuario = query("SELECT * FROM usuario WHERE ID_Usuario = %s", (id_usuario,), one=True)
+        if not usuario:
+            return jsonify({"error": "Usuario no encontrado"}), 404
 
-            "claustro": datos.get(
-                "claustro"
-            ),
+        # Validar existencia de Constitución
+        constitucion = query("SELECT * FROM constitucion WHERE ID_Constitucion = %s", (id_constitucion,), one=True)
+        if not constitucion:
+            return jsonify({"error": "Constitución no encontrada"}), 404
 
-            "fecha_inicio_mandato": datos.get(
-                "fecha_inicio_mandato"
-            ),
-
-            "fecha_fin_mandato": datos.get(
-                "fecha_fin_mandato"
-            ),
-
-            # =========================
-            # RELACION CON USUARIO
-            # =========================
-            "usuario_id": ObjectId(
-                datos.get("usuario_id")
-            ) if datos.get("usuario_id") else None,
-
-            # Relaciones
-            "comisiones": datos.get(
-                "comisiones",
-                []
-            ),
-
-            "notificaciones": datos.get(
-                "notificaciones",
-                []
-            ),
-
-            "citaciones": datos.get(
-                "citaciones",
-                []
-            ),
-
-            "constituciones": datos.get(
-                "constituciones",
-                []
-            ),
-
-            "votaciones": datos.get(
-                "votaciones",
-                []
+        sql = """
+            INSERT INTO consejero (
+                ID_Usuario, ID_Constitucion, faltasAlternas, 
+                faltasConsecutivas, fechaInicioMandato, fechaFinMandato
             )
-        }
-
-        resultado = (
-            consejeros_collection.insert_one(
-                nuevo_consejero
-            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            id_usuario, id_constitucion, faltas_alternas,
+            faltas_consecutivas, fecha_inicio_mandato, fecha_fin_mandato
         )
 
+        id_insertado = execute(sql, params)
+
         return jsonify({
-
-            "mensaje":
-                "Consejero creado correctamente",
-
-            "id":
-                str(
-                    resultado.inserted_id
-                )
-
+            "mensaje": "Consejero creado correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
 # OBTENER TODOS
 # =========================
 def obtener_consejeros():
-
     try:
+        sql = """
+            SELECT 
+                c.ID_Consejero,
+                c.ID_Usuario,
+                c.ID_Constitucion,
+                c.faltasAlternas,
+                c.faltasConsecutivas,
+                c.fechaInicioMandato,
+                c.fechaFinMandato,
+                u.nombre,
+                u.apellido,
+                u.mail,
+                u.celular,
+                u.estado
+            FROM consejero c
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+        """
+        rows = query(sql)
 
         consejeros = []
-
-        for consejero in (
-            consejeros_collection.find()
-        ):
-
-            # =========================
-            # CONVERTIR IDS
-            # =========================
-            consejero["_id"] = str(
-                consejero["_id"]
+        for row in rows:
+            # Traer licencias del consejero
+            licencias = query(
+                "SELECT * FROM licencia WHERE ID_Consejero = %s",
+                (row["ID_Consejero"],)
             )
 
-            if consejero.get("usuario_id"):
+            licencias_format = [
+                {
+                    "ID_Licencia": l["ID_Licencia"],
+                    "fechaInicio": str(l["fechaInicio"]) if l["fechaInicio"] else None,
+                    "fechaFin": str(l["fechaFin"]) if l["fechaFin"] else None,
+                    "motivo": l["motivo"]
+                } for l in licencias
+            ]
 
-                consejero["usuario_id"] = str(
-                    consejero["usuario_id"]
-                )
+            estado_usuario = row["estado"] or "Activo"
+            if len(licencias_format) > 0:
+                estado_usuario = "Con licencia"
 
-            # =========================
-            # RELACION CON USUARIO
-            # =========================
-            usuario = None
+            item = {
+                "ID_Consejero": row["ID_Consejero"],
+                "ID_Usuario": row["ID_Usuario"],
+                "ID_Constitucion": row["ID_Constitucion"],
+                "faltas_alternas": row["faltasAlternas"],
+                "faltas_consecutivas": row["faltasConsecutivas"],
+                "fecha_inicio_mandato": str(row["fechaInicioMandato"]) if row["fechaInicioMandato"] else None,
+                "fecha_fin_mandato": str(row["fechaFinMandato"]) if row["fechaFinMandato"] else None,
+                "nombre": row["nombre"] or "",
+                "apellido": row["apellido"] or "",
+                "mail": row["mail"] or "",
+                "celular": row["celular"] or "",
+                "estado": estado_usuario,
+                "licencias": licencias_format
+            }
+            consejeros.append(item)
 
-            usuario_id = consejero.get(
-                "usuario_id"
-            )
-
-            if usuario_id:
-
-                try:
-
-                    usuario = (
-                        usuarios_collection.find_one({
-                            "_id":
-                                ObjectId(
-                                    usuario_id
-                                )
-                        })
-                    )
-
-                except Exception:
-                    usuario = None
-
-            # =========================
-            # DATOS DEL USUARIO
-            # =========================
-            if usuario:
-
-                consejero["nombre"] = usuario.get(
-                    "nombre",
-                    ""
-                )
-
-                consejero["apellido"] = usuario.get(
-                    "apellido",
-                    ""
-                )
-
-                consejero["mail"] = usuario.get(
-                    "mail",
-                    ""
-                )
-
-                consejero["celular"] = usuario.get(
-                    "celular",
-                    ""
-                )
-
-                consejero["estado"] = usuario.get(
-                    "estado",
-                    "Activo"
-                )
-
-            else:
-
-                consejero["nombre"] = ""
-                consejero["apellido"] = ""
-                consejero["mail"] = ""
-                consejero["celular"] = ""
-                consejero["estado"] = "Activo"
-
-            # =========================
-            # ASISTENCIAS
-            # =========================
-            asistencias = list(
-                asistencias_collection.find({
-                    "consejero_id":
-                        consejero["_id"]
-                })
-            )
-
-            faltas_alternas = 0
-            faltas_consecutivas = 0
-            consecutivas_actual = 0
-
-            for asistencia in asistencias:
-
-                estado = asistencia.get(
-                    "estado",
-                    ""
-                )
-
-                if estado == "Ausente":
-
-                    faltas_alternas += 1
-
-                    consecutivas_actual += 1
-
-                    if (
-                        consecutivas_actual >
-                        faltas_consecutivas
-                    ):
-
-                        faltas_consecutivas = (
-                            consecutivas_actual
-                        )
-
-                else:
-
-                    consecutivas_actual = 0
-
-            consejero["faltas_alternas"] = (
-                faltas_alternas
-            )
-
-            consejero["faltas_consecutivas"] = (
-                faltas_consecutivas
-            )
-
-            # =========================
-            # LICENCIAS
-            # =========================
-            licencias = list(
-                licencias_collection.find({
-                    "consejero_id":
-                        consejero["_id"]
-                })
-            )
-
-            consejero["licencias"] = []
-
-            for licencia in licencias:
-
-                licencia["_id"] = str(
-                    licencia["_id"]
-                )
-
-                consejero["licencias"].append(
-                    licencia
-                )
-
-            # =========================
-            # ESTADO POR LICENCIA
-            # =========================
-            if len(licencias) > 0:
-
-                consejero["estado"] = (
-                    "Con licencia"
-                )
-
-            consejeros.append(
-                consejero
-            )
-
-        return jsonify(
-            consejeros
-        ), 200
+        return jsonify(consejeros), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
 # OBTENER POR ID
 # =========================
 def obtener_consejero_por_id(id):
-
     try:
+        sql = """
+            SELECT 
+                c.ID_Consejero,
+                c.ID_Usuario,
+                c.ID_Constitucion,
+                c.faltasAlternas,
+                c.faltasConsecutivas,
+                c.fechaInicioMandato,
+                c.fechaFinMandato,
+                u.nombre,
+                u.apellido,
+                u.mail,
+                u.celular,
+                u.estado
+            FROM consejero c
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+            WHERE c.ID_Consejero = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        consejero = (
-            consejeros_collection.find_one({
-                "_id": ObjectId(id)
-            })
+        if not row:
+            return jsonify({"error": "Consejero no encontrado"}), 404
+
+        # Asistencias asociadas
+        asistencias = query(
+            "SELECT * FROM asistencia WHERE ID_Consejero = %s",
+            (id,)
         )
+        asistencias_format = [
+            {
+                "ID_Asistencia": a["ID_Asistencia"],
+                "ID_Reunion": a["ID_Reunion"],
+                "estado": a["estado"],
+                "fecha": str(a["fecha"]) if a["fecha"] else None
+            } for a in asistencias
+        ]
 
-        if not consejero:
-
-            return jsonify({
-                "error":
-                    "Consejero no encontrado"
-            }), 404
-
-        # =========================
-        # CONVERTIR IDS
-        # =========================
-        consejero["_id"] = str(
-            consejero["_id"]
+        # Licencias asociadas
+        licencias = query(
+            "SELECT * FROM licencia WHERE ID_Consejero = %s",
+            (id,)
         )
+        licencias_format = [
+            {
+                "ID_Licencia": l["ID_Licencia"],
+                "fechaInicio": str(l["fechaInicio"]) if l["fechaInicio"] else None,
+                "fechaFin": str(l["fechaFin"]) if l["fechaFin"] else None,
+                "motivo": l["motivo"]
+            } for l in licencias
+        ]
 
-        if consejero.get("usuario_id"):
+        consejero = {
+            "ID_Consejero": row["ID_Consejero"],
+            "ID_Usuario": row["ID_Usuario"],
+            "ID_Constitucion": row["ID_Constitucion"],
+            "faltas_alternas": row["faltasAlternas"],
+            "faltas_consecutivas": row["faltasConsecutivas"],
+            "fecha_inicio_mandato": str(row["fechaInicioMandato"]) if row["fechaInicioMandato"] else None,
+            "fecha_fin_mandato": str(row["fechaFinMandato"]) if row["fechaFinMandato"] else None,
+            "usuario": {
+                "ID_Usuario": row["ID_Usuario"],
+                "nombre": row["nombre"],
+                "apellido": row["apellido"],
+                "mail": row["mail"],
+                "celular": row["celular"],
+                "estado": row["estado"]
+            } if row["ID_Usuario"] else None,
+            "asistencias": asistencias_format,
+            "licencias": licencias_format
+        }
 
-            consejero["usuario_id"] = str(
-                consejero["usuario_id"]
-            )
-
-        # =========================
-        # RELACION CON USUARIO
-        # =========================
-        usuario = None
-
-        usuario_id = consejero.get(
-            "usuario_id"
-        )
-
-        if usuario_id:
-
-            try:
-
-                usuario = (
-                    usuarios_collection.find_one({
-                        "_id":
-                            ObjectId(
-                                usuario_id
-                            )
-                    })
-                )
-
-            except Exception:
-                usuario = None
-
-        if usuario:
-
-            consejero["usuario"] = {
-
-                "_id":
-                    str(
-                        usuario["_id"]
-                    ),
-
-                "nombre":
-                    usuario.get(
-                        "nombre",
-                        ""
-                    ),
-
-                "apellido":
-                    usuario.get(
-                        "apellido",
-                        ""
-                    ),
-
-                "mail":
-                    usuario.get(
-                        "mail",
-                        ""
-                    ),
-
-                "celular":
-                    usuario.get(
-                        "celular",
-                        ""
-                    ),
-
-                "estado":
-                    usuario.get(
-                        "estado",
-                        "Activo"
-                    )
-            }
-
-        else:
-
-            consejero["usuario"] = None
-
-        # =========================
-        # ASISTENCIAS
-        # =========================
-        asistencias = list(
-            asistencias_collection.find({
-                "consejero_id": id
-            })
-        )
-
-        for asistencia in asistencias:
-
-            asistencia["_id"] = str(
-                asistencia["_id"]
-            )
-
-        consejero["asistencias"] = (
-            asistencias
-        )
-
-        # =========================
-        # LICENCIAS
-        # =========================
-        licencias = list(
-            licencias_collection.find({
-                "consejero_id": id
-            })
-        )
-
-        for licencia in licencias:
-
-            licencia["_id"] = str(
-                licencia["_id"]
-            )
-
-        consejero["licencias"] = (
-            licencias
-        )
-
-        return jsonify(
-            consejero
-        ), 200
+        return jsonify(consejero), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
 # ACTUALIZAR
 # =========================
 def actualizar_consejero(id):
-
     try:
-
         datos = request.json
 
-        consejero_actualizado = {
+        consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id,), one=True)
+        if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
 
-            "id_postulacion": datos.get(
-                "id_postulacion"
-            ),
+        campos = []
+        params = []
 
-            "tipo": datos.get(
-                "tipo"
-            ),
-
-            "claustro": datos.get(
-                "claustro"
-            ),
-
-            "fecha_inicio_mandato": datos.get(
-                "fecha_inicio_mandato"
-            ),
-
-            "fecha_fin_mandato": datos.get(
-                "fecha_fin_mandato"
-            ),
-
-            # =========================
-            # RELACION CON USUARIO
-            # =========================
-            "usuario_id": ObjectId(
-                datos.get("usuario_id")
-            ) if datos.get("usuario_id") else None,
-
-            "comisiones": datos.get(
-                "comisiones",
-                []
-            ),
-
-            "notificaciones": datos.get(
-                "notificaciones",
-                []
-            ),
-
-            "citaciones": datos.get(
-                "citaciones",
-                []
-            ),
-
-            "constituciones": datos.get(
-                "constituciones",
-                []
-            ),
-
-            "votaciones": datos.get(
-                "votaciones",
-                []
-            )
+        mapeo = {
+            "ID_Usuario": datos.get("ID_Usuario") or datos.get("usuario_id"),
+            "ID_Constitucion": datos.get("ID_Constitucion") or datos.get("constitucion_id"),
+            "faltasAlternas": datos.get("faltasAlternas"),
+            "faltasConsecutivas": datos.get("faltasConsecutivas"),
+            "fechaInicioMandato": datos.get("fechaInicioMandato") or datos.get("fecha_inicio_mandato"),
+            "fechaFinMandato": datos.get("fechaFinMandato") or datos.get("fecha_fin_mandato")
         }
 
-        resultado = (
-            consejeros_collection.update_one(
-                {
-                    "_id":
-                        ObjectId(id)
-                },
-                {
-                    "$set":
-                        consejero_actualizado
-                }
-            )
-        )
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-        if resultado.matched_count == 0:
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-            return jsonify({
-                "error":
-                    "Consejero no encontrado"
-            }), 404
+        params.append(id)
+        sql = f"UPDATE consejero SET {', '.join(campos)} WHERE ID_Consejero = %s"
 
-        return jsonify({
+        execute(sql, params)
 
-            "mensaje":
-                "Consejero actualizado correctamente"
-
-        }), 200
+        return jsonify({"mensaje": "Consejero actualizado correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
 # ELIMINAR
 # =========================
 def eliminar_consejero(id):
-
     try:
+        consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id,), one=True)
+        if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
 
-        resultado = (
-            consejeros_collection.delete_one({
-                "_id":
-                    ObjectId(id)
-            })
-        )
+        execute("DELETE FROM consejero WHERE ID_Consejero = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error":
-                    "Consejero no encontrado"
-            }), 404
-
-        return jsonify({
-
-            "mensaje":
-                "Consejero eliminado correctamente"
-
-        }), 200
+        return jsonify({"mensaje": "Consejero eliminado correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

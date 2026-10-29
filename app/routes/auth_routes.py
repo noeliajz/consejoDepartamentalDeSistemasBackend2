@@ -1,25 +1,12 @@
 from flask import Blueprint
+from app.controllers.auth_controller import iniciar_sesion, registrarse
 
-from app.controllers.auth_controller import (
-    registrarse,
-    login
-)
+auth_bp = Blueprint("auth_bp", __name__)
 
-auth_bp = Blueprint(
-    "auth_bp",
-    __name__
-)
+@auth_bp.route("/auth/login", methods=["POST"])
+def login():
+    return iniciar_sesion()
 
-# REGISTRO
-
-auth_bp.route(
-    "/auth/register",
-    methods=["POST"]
-)(registrarse)
-
-# LOGIN
-
-auth_bp.route(
-    "/auth/login",
-    methods=["POST"]
-)(login)
+@auth_bp.route("/auth/register", methods=["POST"])
+def register():
+    return registrarse()

@@ -24,16 +24,16 @@ disposicion_bp.route(
 )(obtener_disposiciones)
 
 disposicion_bp.route(
-    "/disposiciones/<id>",
+    "/disposiciones/<int:id>",
     methods=["GET"]
 )(obtener_disposicion_por_id)
 
 disposicion_bp.route(
-    "/disposiciones/<id>",
+    "/disposiciones/<int:id>",
     methods=["PUT"]
 )(actualizar_disposicion)
 
 disposicion_bp.route(
-    "/disposiciones/<id>",
+    "/disposiciones/<int:id>",
     methods=["DELETE"]
 )(eliminar_disposicion)

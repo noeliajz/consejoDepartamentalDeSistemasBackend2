@@ -1,3 +1,10 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-notificaciones_collection = db["notificaciones"]
+@dataclass
+class NotificacionModel:
+    ID_Notificacion: Optional[int]
+    ID_Usuario: int
+    fecha: str
+    contenido: str
+    leido: bool = False

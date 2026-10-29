@@ -1,15 +1,10 @@
 from flask import Blueprint
 
 from app.controllers.comision_consejero_controller import (
-
     crear_comision_consejero,
-
     obtener_comision_consejeros,
-
     obtener_comision_consejero_por_id,
-
     actualizar_comision_consejero,
-
     eliminar_comision_consejero
 )
 
@@ -32,7 +27,7 @@ comision_consejero_bp.route(
 # OBTENER UNA
 # ==========================================
 comision_consejero_bp.route(
-    "/comision-consejeros/<id>",
+    "/comision-consejeros/<int:id>",
     methods=["GET"]
 )(
     obtener_comision_consejero_por_id
@@ -52,7 +47,7 @@ comision_consejero_bp.route(
 # ACTUALIZAR
 # ==========================================
 comision_consejero_bp.route(
-    "/comision-consejeros/<id>",
+    "/comision-consejeros/<int:id>",
     methods=["PUT"]
 )(
     actualizar_comision_consejero
@@ -62,7 +57,7 @@ comision_consejero_bp.route(
 # ELIMINAR
 # ==========================================
 comision_consejero_bp.route(
-    "/comision-consejeros/<id>",
+    "/comision-consejeros/<int:id>",
     methods=["DELETE"]
 )(
     eliminar_comision_consejero

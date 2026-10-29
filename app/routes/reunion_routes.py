@@ -24,16 +24,16 @@ reunion_bp.route(
 )(obtener_reuniones)
 
 reunion_bp.route(
-    "/reuniones/<id>",
+    "/reuniones/<int:id>",
     methods=["GET"]
 )(obtener_reunion_por_id)
 
 reunion_bp.route(
-    "/reuniones/<id>",
+    "/reuniones/<int:id>",
     methods=["PUT"]
 )(actualizar_reunion)
 
 reunion_bp.route(
-    "/reuniones/<id>",
+    "/reuniones/<int:id>",
     methods=["DELETE"]
 )(eliminar_reunion)

@@ -24,16 +24,16 @@ citacion_bp.route(
 )(obtener_citaciones)
 
 citacion_bp.route(
-    "/citaciones/<id>",
+    "/citaciones/<int:id>",
     methods=["GET"]
 )(obtener_citacion_por_id)
 
 citacion_bp.route(
-    "/citaciones/<id>",
+    "/citaciones/<int:id>",
     methods=["PUT"]
 )(actualizar_citacion)
 
 citacion_bp.route(
-    "/citaciones/<id>",
+    "/citaciones/<int:id>",
     methods=["DELETE"]
 )(eliminar_citacion)
