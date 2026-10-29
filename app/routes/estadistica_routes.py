@@ -5,7 +5,8 @@ from app.controllers.estadistica_controller import (
     obtener_estadisticas,
     obtener_estadistica_por_id,
     actualizar_estadistica,
-    eliminar_estadistica
+    eliminar_estadistica,
+    dashboard_estadisticas
 )
 
 estadistica_bp = Blueprint(
@@ -13,27 +14,67 @@ estadistica_bp = Blueprint(
     __name__
 )
 
-estadistica_bp.route(
+# =========================================
+# DASHBOARD
+# =========================================
+@estadistica_bp.route(
+    "/estadisticas/dashboard",
+    methods=["GET"]
+)
+def dashboard():
+    return dashboard_estadisticas()
+
+
+# =========================================
+# CREAR
+# =========================================
+@estadistica_bp.route(
     "/estadisticas",
     methods=["POST"]
-)(crear_estadistica)
+)
+def crear():
+    return crear_estadistica()
 
-estadistica_bp.route(
+
+# =========================================
+# OBTENER TODAS
+# =========================================
+@estadistica_bp.route(
     "/estadisticas",
     methods=["GET"]
-)(obtener_estadisticas)
+)
+def obtener_todas():
+    return obtener_estadisticas()
 
-estadistica_bp.route(
-    "/estadisticas/<id>",
+
+# =========================================
+# OBTENER POR ID
+# =========================================
+@estadistica_bp.route(
+    "/estadisticas/<int:id>",
     methods=["GET"]
-)(obtener_estadistica_por_id)
+)
+def obtener_por_id(id):
+    return obtener_estadistica_por_id(id)
 
-estadistica_bp.route(
-    "/estadisticas/<id>",
+
+# =========================================
+# ACTUALIZAR
+# =========================================
+@estadistica_bp.route(
+    "/estadisticas/<int:id>",
     methods=["PUT"]
-)(actualizar_estadistica)
+)
+def actualizar(id):
+    return actualizar_estadistica(id)
 
-estadistica_bp.route(
-    "/estadisticas/<id>",
+
+# =========================================
+# ELIMINAR
+# =========================================
+@estadistica_bp.route(
+    "/estadisticas/<int:id>",
     methods=["DELETE"]
-)(eliminar_estadistica)
+)
+def eliminar(id):
+    return eliminar_estadistica(id)

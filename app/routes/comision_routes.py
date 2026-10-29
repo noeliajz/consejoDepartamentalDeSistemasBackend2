@@ -24,16 +24,16 @@ comision_bp.route(
 )(obtener_comisiones)
 
 comision_bp.route(
-    "/comisiones/<id>",
+    "/comisiones/<int:id>",
     methods=["GET"]
 )(obtener_comision_por_id)
 
 comision_bp.route(
-    "/comisiones/<id>",
+    "/comisiones/<int:id>",
     methods=["PUT"]
 )(actualizar_comision)
 
 comision_bp.route(
-    "/comisiones/<id>",
+    "/comisiones/<int:id>",
     methods=["DELETE"]
 )(eliminar_comision)

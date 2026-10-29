@@ -27,18 +27,18 @@ expediente_bp.route(
 
 # OBTENER POR ID
 expediente_bp.route(
-    "/expedientes/<id>",
+    "/expedientes/<int:id>",
     methods=["GET"]
 )(obtener_expediente_por_id)
 
 # ACTUALIZAR
 expediente_bp.route(
-    "/expedientes/<id>",
+    "/expedientes/<int:id>",
     methods=["PUT"]
 )(actualizar_expediente)
 
 # ELIMINAR
 expediente_bp.route(
-    "/expedientes/<id>",
+    "/expedientes/<int:id>",
     methods=["DELETE"]
 )(eliminar_expediente)

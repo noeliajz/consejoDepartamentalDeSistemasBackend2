@@ -1,16 +1,5 @@
-# app/controllers/licencia_controller.py
-
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.licencia_model import (
-    licencias_collection
-)
-
-from app.models.consejero_model import (
-    consejeros_collection
-)
-
+from app.config.db import query, execute
 
 # =========================
 # CREAR
@@ -19,47 +8,40 @@ def crear_licencia():
     try:
         datos = request.json
 
-        nueva_licencia = {
+        id_consejero = datos.get("ID_Consejero") or datos.get("consejero_id")
+        fecha_inicio = datos.get("fechaInicio") or datos.get("fecha_inicio")
+        fecha_fin = datos.get("fechaFin") or datos.get("fecha_fin")
+        motivo = datos.get("motivo")
 
-            "fechaInicio": datos.get(
-                "fechaInicio"
-            ),
+        if not id_consejero or not fecha_inicio:
+            return jsonify({
+                "error": "Faltan campos obligatorios (ID_Consejero y fechaInicio)"
+            }), 400
 
-            "fechaFin": datos.get(
-                "fechaFin"
-            ),
-
-            "motivo": datos.get(
-                "motivo"
-            ),
-
-            # RELACION CON CONSEJERO
-            "consejero_id": datos.get(
-                "consejero_id"
-            )
-        }
-
-        resultado = (
-            licencias_collection.insert_one(
-                nueva_licencia
-            )
+        # Validar existencia de Consejero
+        consejero = query(
+            "SELECT * FROM consejero WHERE ID_Consejero = %s",
+            (id_consejero,),
+            one=True
         )
+        if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
+
+        sql = """
+            INSERT INTO licencia (ID_Consejero, fechaInicio, fechaFin, motivo)
+            VALUES (%s, %s, %s, %s)
+        """
+        params = (id_consejero, fecha_inicio, fecha_fin, motivo)
+
+        id_insertado = execute(sql, params)
 
         return jsonify({
-            "mensaje":
-                "Licencia creada correctamente",
-
-            "id":
-                str(
-                    resultado.inserted_id
-                )
+            "mensaje": "Licencia creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -67,94 +49,45 @@ def crear_licencia():
 # =========================
 def obtener_licencias():
     try:
+        sql = """
+            SELECT 
+                l.ID_Licencia,
+                l.ID_Consejero,
+                l.fechaInicio,
+                l.fechaFin,
+                l.motivo,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido,
+                u.tipo AS consejero_tipo,
+                u.claustro AS consejero_claustro
+            FROM licencia l
+            LEFT JOIN consejero c ON l.ID_Consejero = c.ID_Consejero
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+        """
+        rows = query(sql)
+
         licencias = []
+        for row in rows:
+            item = {
+                "ID_Licencia": row["ID_Licencia"],
+                "ID_Consejero": row["ID_Consejero"],
+                "fechaInicio": str(row["fechaInicio"]) if row["fechaInicio"] else None,
+                "fechaFin": str(row["fechaFin"]) if row["fechaFin"] else None,
+                "motivo": row["motivo"],
+                "consejero": {
+                    "ID_Consejero": row["ID_Consejero"],
+                    "nombre": row["consejero_nombre"],
+                    "apellido": row["consejero_apellido"],
+                    "tipo": row["consejero_tipo"],
+                    "claustro": row["consejero_claustro"]
+                } if row["ID_Consejero"] else None
+            }
+            licencias.append(item)
 
-        for licencia in (
-            licencias_collection.find()
-        ):
-
-            licencia["_id"] = str(
-                licencia["_id"]
-            )
-
-            # =========================
-            # RELACION CONSEJERO
-            # =========================
-            consejero = None
-
-            consejero_id = licencia.get(
-                "consejero_id"
-            )
-
-            if consejero_id:
-
-                # si viene string
-                if isinstance(
-                    consejero_id,
-                    str
-                ):
-
-                    consejero = (
-                        consejeros_collection.find_one({
-                            "_id":
-                                ObjectId(
-                                    consejero_id
-                                )
-                        })
-                    )
-
-                # si viene ObjectId
-                else:
-
-                    consejero = (
-                        consejeros_collection.find_one({
-                            "_id":
-                                consejero_id
-                        })
-                    )
-
-            # =========================
-            # DATOS CONSEJERO
-            # =========================
-            if consejero:
-
-                licencia["consejero"] = {
-
-                    "_id":
-                        str(
-                            consejero["_id"]
-                        ),
-
-                    "tipo":
-                        consejero.get(
-                            "tipo",
-                            ""
-                        ),
-
-                    "claustro":
-                        consejero.get(
-                            "claustro",
-                            ""
-                        )
-                }
-
-            else:
-
-                licencia["consejero"] = None
-
-            licencias.append(
-                licencia
-            )
-
-        return jsonify(
-            licencias
-        ), 200
+        return jsonify(licencias), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -162,92 +95,46 @@ def obtener_licencias():
 # =========================
 def obtener_licencia_por_id(id):
     try:
-        licencia = (
-            licencias_collection.find_one({
-                "_id": ObjectId(id)
-            })
-        )
+        sql = """
+            SELECT 
+                l.ID_Licencia,
+                l.ID_Consejero,
+                l.fechaInicio,
+                l.fechaFin,
+                l.motivo,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido,
+                u.tipo AS consejero_tipo,
+                u.claustro AS consejero_claustro
+            FROM licencia l
+            LEFT JOIN consejero c ON l.ID_Consejero = c.ID_Consejero
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+            WHERE l.ID_Licencia = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        if not licencia:
+        if not row:
+            return jsonify({"error": "Licencia no encontrada"}), 404
 
-            return jsonify({
-                "error":
-                    "Licencia no encontrada"
-            }), 404
+        licencia = {
+            "ID_Licencia": row["ID_Licencia"],
+            "ID_Consejero": row["ID_Consejero"],
+            "fechaInicio": str(row["fechaInicio"]) if row["fechaInicio"] else None,
+            "fechaFin": str(row["fechaFin"]) if row["fechaFin"] else None,
+            "motivo": row["motivo"],
+            "consejero": {
+                "ID_Consejero": row["ID_Consejero"],
+                "nombre": row["consejero_nombre"],
+                "apellido": row["consejero_apellido"],
+                "tipo": row["consejero_tipo"],
+                "claustro": row["consejero_claustro"]
+            } if row["ID_Consejero"] else None
+        }
 
-        licencia["_id"] = str(
-            licencia["_id"]
-        )
-
-        # =========================
-        # RELACION CONSEJERO
-        # =========================
-        consejero = None
-
-        consejero_id = licencia.get(
-            "consejero_id"
-        )
-
-        if consejero_id:
-
-            if isinstance(
-                consejero_id,
-                str
-            ):
-
-                consejero = (
-                    consejeros_collection.find_one({
-                        "_id":
-                            ObjectId(
-                                consejero_id
-                            )
-                    })
-                )
-
-            else:
-
-                consejero = (
-                    consejeros_collection.find_one({
-                        "_id":
-                            consejero_id
-                    })
-                )
-
-        if consejero:
-
-            licencia["consejero"] = {
-
-                "_id":
-                    str(
-                        consejero["_id"]
-                    ),
-
-                "tipo":
-                    consejero.get(
-                        "tipo",
-                        ""
-                    ),
-
-                "claustro":
-                    consejero.get(
-                        "claustro",
-                        ""
-                    )
-            }
-
-        else:
-
-            licencia["consejero"] = None
-
-        return jsonify(
-            licencia
-        ), 200
+        return jsonify(licencia), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -257,55 +144,43 @@ def actualizar_licencia(id):
     try:
         datos = request.json
 
-        licencia_actualizada = {
+        licencia = query("SELECT * FROM licencia WHERE ID_Licencia = %s", (id,), one=True)
+        if not licencia:
+            return jsonify({"error": "Licencia no encontrada"}), 404
 
-            "fechaInicio": datos.get(
-                "fechaInicio"
-            ),
+        id_consejero = datos.get("ID_Consejero") or datos.get("consejero_id")
+        if id_consejero:
+            consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id_consejero,), one=True)
+            if not consejero:
+                return jsonify({"error": "Consejero no encontrado"}), 404
 
-            "fechaFin": datos.get(
-                "fechaFin"
-            ),
+        campos = []
+        params = []
 
-            "motivo": datos.get(
-                "motivo"
-            ),
-
-            "consejero_id": datos.get(
-                "consejero_id"
-            )
+        mapeo = {
+            "ID_Consejero": id_consejero,
+            "fechaInicio": datos.get("fechaInicio") or datos.get("fecha_inicio"),
+            "fechaFin": datos.get("fechaFin") or datos.get("fecha_fin"),
+            "motivo": datos.get("motivo")
         }
 
-        resultado = (
-            licencias_collection.update_one(
-                {
-                    "_id":
-                        ObjectId(id)
-                },
-                {
-                    "$set":
-                        licencia_actualizada
-                }
-            )
-        )
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-        if resultado.matched_count == 0:
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-            return jsonify({
-                "error":
-                    "Licencia no encontrada"
-            }), 404
+        params.append(id)
+        sql = f"UPDATE licencia SET {', '.join(campos)} WHERE ID_Licencia = %s"
 
-        return jsonify({
-            "mensaje":
-                "Licencia actualizada correctamente"
-        }), 200
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Licencia actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -313,27 +188,13 @@ def actualizar_licencia(id):
 # =========================
 def eliminar_licencia(id):
     try:
-        resultado = (
-            licencias_collection.delete_one({
-                "_id":
-                    ObjectId(id)
-            })
-        )
+        licencia = query("SELECT * FROM licencia WHERE ID_Licencia = %s", (id,), one=True)
+        if not licencia:
+            return jsonify({"error": "Licencia no encontrada"}), 404
 
-        if resultado.deleted_count == 0:
+        execute("DELETE FROM licencia WHERE ID_Licencia = %s", (id,))
 
-            return jsonify({
-                "error":
-                    "Licencia no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje":
-                "Licencia eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Licencia eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

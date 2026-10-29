@@ -1,3 +1,11 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-comision_consejeros_collection = db["comision_consejeros"]
+@dataclass
+class ComisionConsejeroModel:
+    ID_Comision_Consejero: Optional[int]
+    ID_Comision: int
+    ID_Consejero: int
+    cargo: str  # Ej: 'Presidente', 'Vocal', 'Secretario'
+    fechaInicio: Optional[str] = None
+    fechaFin: Optional[str] = None

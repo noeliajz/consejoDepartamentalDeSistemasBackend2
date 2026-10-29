@@ -1,219 +1,137 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.constitucion_model import (
-    constituciones_collection
-)
-
-
-# ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # OTROS
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
-
+from app.config.db import query, execute
 
 # ==========================================
 # CREAR
 # ==========================================
 def crear_constitucion():
-
     try:
-
         datos = request.json
 
-        # VALIDAR CAMPOS
-        campos = [
-            "descripcion",
-            "fechaInicio",
-            "fechaFin"
-        ]
+        fecha_inicio = datos.get("fechaInicio") or datos.get("fecha_inicio")
+        fecha_fin = datos.get("fechaFin") or datos.get("fecha_fin")
+        descripcion = datos.get("descripcion")
 
-        for campo in campos:
+        # VALIDAR CAMPO OBLIGATORIO
+        if not fecha_inicio:
+            return jsonify({
+                "error": "Falta el campo obligatorio fechaInicio"
+            }), 400
 
-            if campo not in datos:
-
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
-
-        nueva_constitucion = {
-
-            "descripcion": datos["descripcion"],
-
-            "fechaInicio": datos["fechaInicio"],
-
-            "fechaFin": datos["fechaFin"]
-        }
-
-        resultado = constituciones_collection.insert_one(
-            nueva_constitucion
-        )
+        sql = """
+            INSERT INTO constitucion (fechaInicio, fechaFin, descripcion)
+            VALUES (%s, %s, %s)
+        """
+        id_insertado = execute(sql, (fecha_inicio, fecha_fin, descripcion))
 
         return jsonify({
-            "mensaje": "Constitucion creada correctamente",
-            "id": str(resultado.inserted_id)
+            "mensaje": "Constitución creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER TODAS
 # ==========================================
 def obtener_constituciones():
-
     try:
+        sql = "SELECT ID_Constitucion, fechaInicio, fechaFin, descripcion FROM constitucion"
+        rows = query(sql)
 
         lista = []
-
-        for constitucion in constituciones_collection.find():
-
-            constitucion = convertir_objectid(
-                constitucion
-            )
-
-            lista.append(constitucion)
+        for row in rows:
+            item = {
+                "ID_Constitucion": row["ID_Constitucion"],
+                "fechaInicio": str(row["fechaInicio"]) if row["fechaInicio"] else None,
+                "fechaFin": str(row["fechaFin"]) if row["fechaFin"] else None,
+                "descripcion": row["descripcion"]
+            }
+            lista.append(item)
 
         return jsonify(lista), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER POR ID
 # ==========================================
 def obtener_constitucion_por_id(id):
-
     try:
+        sql = "SELECT ID_Constitucion, fechaInicio, fechaFin, descripcion FROM constitucion WHERE ID_Constitucion = %s"
+        row = query(sql, (id,), one=True)
 
-        constitucion = constituciones_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        if not row:
+            return jsonify({"error": "Constitución no encontrada"}), 404
 
-        if not constitucion:
-
-            return jsonify({
-                "error": "Constitucion no encontrada"
-            }), 404
-
-        constitucion = convertir_objectid(
-            constitucion
-        )
+        constitucion = {
+            "ID_Constitucion": row["ID_Constitucion"],
+            "fechaInicio": str(row["fechaInicio"]) if row["fechaInicio"] else None,
+            "fechaFin": str(row["fechaFin"]) if row["fechaFin"] else None,
+            "descripcion": row["descripcion"]
+        }
 
         return jsonify(constitucion), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ACTUALIZAR
 # ==========================================
 def actualizar_constitucion(id):
-
     try:
-
         datos = request.json
 
-        resultado = constituciones_collection.update_one(
-            {
-                "_id": ObjectId(id)
-            },
-            {
-                "$set": datos
-            }
-        )
+        constitucion = query("SELECT * FROM constitucion WHERE ID_Constitucion = %s", (id,), one=True)
+        if not constitucion:
+            return jsonify({"error": "Constitución no encontrada"}), 404
 
-        if resultado.matched_count == 0:
+        campos = []
+        params = []
 
-            return jsonify({
-                "error": "Constitucion no encontrada"
-            }), 404
+        mapeo = {
+            "fechaInicio": datos.get("fechaInicio") or datos.get("fecha_inicio"),
+            "fechaFin": datos.get("fechaFin") or datos.get("fecha_fin"),
+            "descripcion": datos.get("descripcion")
+        }
 
-        return jsonify({
-            "mensaje": "Constitucion actualizada correctamente"
-        }), 200
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
+
+        if not campos:
+            return jsonify({"error": "No hay campos para actualizar"}), 400
+
+        params.append(id)
+        sql = f"UPDATE constitucion SET {', '.join(campos)} WHERE ID_Constitucion = %s"
+
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Constitución actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ELIMINAR
 # ==========================================
 def eliminar_constitucion(id):
-
     try:
+        constitucion = query("SELECT * FROM constitucion WHERE ID_Constitucion = %s", (id,), one=True)
+        if not constitucion:
+            return jsonify({"error": "Constitución no encontrada"}), 404
 
-        resultado = constituciones_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM constitucion WHERE ID_Constitucion = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Constitucion no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Constitucion eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Constitución eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

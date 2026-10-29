@@ -1,377 +1,226 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.comision_consejero_model import (
-    comision_consejeros_collection
-)
-
-from app.models.comision_model import (
-    comisiones_collection
-)
-
-from app.models.consejero_model import (
-    consejeros_collection
-)
-
-
-# ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # OTROS
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
-
+from app.config.db import query, execute
 
 # ==========================================
 # CREAR
 # ==========================================
 def crear_comision_consejero():
-
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CAMPOS
-        # ==========================================
-        campos = [
-            "idComision",
-            "idConsejero",
-            "esOyente",
-            "presente"
-        ]
+        id_comision = datos.get("ID_Comision") or datos.get("idComision")
+        id_consejero = datos.get("ID_Consejero") or datos.get("idConsejero")
+        es_oyente = datos.get("esOyente", 0)
+        presente = datos.get("presente", 0)
 
-        for campo in campos:
+        if not id_comision or not id_consejero:
+            return jsonify({
+                "error": "Faltan campos obligatorios (idComision e idConsejero)"
+            }), 400
 
-            if campo not in datos:
-
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
-
-        # ==========================================
         # VALIDAR COMISION
-        # ==========================================
-        comision = comisiones_collection.find_one({
-            "_id": ObjectId(datos["idComision"])
-        })
-
-        if not comision:
-
-            return jsonify({
-                "error": "Comision no encontrada"
-            }), 404
-
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        consejero = consejeros_collection.find_one({
-            "_id": ObjectId(datos["idConsejero"])
-        })
-
-        if not consejero:
-
-            return jsonify({
-                "error": "Consejero no encontrado"
-            }), 404
-
-        # ==========================================
-        # CREAR RELACION
-        # ==========================================
-        nueva_relacion = {
-
-            "idComision": datos["idComision"],
-
-            "idConsejero": datos["idConsejero"],
-
-            "esOyente": datos["esOyente"],
-
-            "presente": datos["presente"]
-        }
-
-        resultado = comision_consejeros_collection.insert_one(
-            nueva_relacion
+        comision = query(
+            "SELECT * FROM comision WHERE ID_Comision = %s",
+            (id_comision,),
+            one=True
         )
+        if not comision:
+            return jsonify({"error": "Comisión no encontrada"}), 404
+
+        # VALIDAR CONSEJERO
+        consejero = query(
+            "SELECT * FROM consejero WHERE ID_Consejero = %s",
+            (id_consejero,),
+            one=True
+        )
+        if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
+
+        sql = """
+            INSERT INTO comisionconsejero (ID_Comision, ID_Consejero, esOyente, presente)
+            VALUES (%s, %s, %s, %s)
+        """
+        id_insertado = execute(sql, (id_comision, id_consejero, es_oyente, presente))
 
         return jsonify({
-            "mensaje": "Relacion creada correctamente",
-            "id": str(resultado.inserted_id)
+            "mensaje": "Relación creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER TODAS
 # ==========================================
 def obtener_comision_consejeros():
-
     try:
+        sql = """
+            SELECT 
+                cc.ID_ComisionConsejero,
+                cc.ID_Comision,
+                cc.ID_Consejero,
+                cc.esOyente,
+                cc.presente,
+                co.nombre AS comision_nombre,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido
+            FROM comisionconsejero cc
+            LEFT JOIN comision co ON cc.ID_Comision = co.ID_Comision
+            LEFT JOIN consejero c ON cc.ID_Consejero = c.ID_Consejero
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+        """
+        rows = query(sql)
 
         lista = []
-
-        for relacion in comision_consejeros_collection.find():
-
-            relacion = convertir_objectid(
-                relacion
-            )
-
-            # ==========================================
-            # RELACION COMISION
-            # ==========================================
-            comision = None
-
-            if "idComision" in relacion:
-
-                comision = comisiones_collection.find_one({
-                    "_id": ObjectId(
-                        relacion["idComision"]
-                    )
-                })
-
-                if comision:
-
-                    comision = convertir_objectid(
-                        comision
-                    )
-
-            # ==========================================
-            # RELACION CONSEJERO
-            # ==========================================
-            consejero = None
-
-            if "idConsejero" in relacion:
-
-                consejero = consejeros_collection.find_one({
-                    "_id": ObjectId(
-                        relacion["idConsejero"]
-                    )
-                })
-
-                if consejero:
-
-                    consejero = convertir_objectid(
-                        consejero
-                    )
-
-            # ==========================================
-            # AGREGAR RELACIONES
-            # ==========================================
-            relacion["comision"] = comision
-
-            relacion["consejero"] = consejero
-
-            lista.append(relacion)
+        for row in rows:
+            item = {
+                "ID_ComisionConsejero": row["ID_ComisionConsejero"],
+                "ID_Comision": row["ID_Comision"],
+                "ID_Consejero": row["ID_Consejero"],
+                "esOyente": bool(row["esOyente"]),
+                "presente": bool(row["presente"]),
+                "comision": {
+                    "ID_Comision": row["ID_Comision"],
+                    "nombre": row["comision_nombre"]
+                } if row["ID_Comision"] else None,
+                "consejero": {
+                    "ID_Consejero": row["ID_Consejero"],
+                    "nombre": row["consejero_nombre"],
+                    "apellido": row["consejero_apellido"]
+                } if row["ID_Consejero"] else None
+            }
+            lista.append(item)
 
         return jsonify(lista), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER POR ID
 # ==========================================
 def obtener_comision_consejero_por_id(id):
-
     try:
+        sql = """
+            SELECT 
+                cc.ID_ComisionConsejero,
+                cc.ID_Comision,
+                cc.ID_Consejero,
+                cc.esOyente,
+                cc.presente,
+                co.nombre AS comision_nombre,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido
+            FROM comisionconsejero cc
+            LEFT JOIN comision co ON cc.ID_Comision = co.ID_Comision
+            LEFT JOIN consejero c ON cc.ID_Consejero = c.ID_Consejero
+            LEFT JOIN usuario u ON c.ID_Usuario = u.ID_Usuario
+            WHERE cc.ID_ComisionConsejero = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        relacion = comision_consejeros_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        if not row:
+            return jsonify({"error": "Relación no encontrada"}), 404
 
-        if not relacion:
-
-            return jsonify({
-                "error": "Relacion no encontrada"
-            }), 404
-
-        relacion = convertir_objectid(
-            relacion
-        )
-
-        # ==========================================
-        # RELACION COMISION
-        # ==========================================
-        comision = None
-
-        if "idComision" in relacion:
-
-            comision = comisiones_collection.find_one({
-                "_id": ObjectId(
-                    relacion["idComision"]
-                )
-            })
-
-            if comision:
-
-                comision = convertir_objectid(
-                    comision
-                )
-
-        # ==========================================
-        # RELACION CONSEJERO
-        # ==========================================
-        consejero = None
-
-        if "idConsejero" in relacion:
-
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(
-                    relacion["idConsejero"]
-                )
-            })
-
-            if consejero:
-
-                consejero = convertir_objectid(
-                    consejero
-                )
-
-        # ==========================================
-        # AGREGAR RELACIONES
-        # ==========================================
-        relacion["comision"] = comision
-
-        relacion["consejero"] = consejero
+        relacion = {
+            "ID_ComisionConsejero": row["ID_ComisionConsejero"],
+            "ID_Comision": row["ID_Comision"],
+            "ID_Consejero": row["ID_Consejero"],
+            "esOyente": bool(row["esOyente"]),
+            "presente": bool(row["presente"]),
+            "comision": {
+                "ID_Comision": row["ID_Comision"],
+                "nombre": row["comision_nombre"]
+            } if row["ID_Comision"] else None,
+            "consejero": {
+                "ID_Consejero": row["ID_Consejero"],
+                "nombre": row["consejero_nombre"],
+                "apellido": row["consejero_apellido"]
+            } if row["ID_Consejero"] else None
+        }
 
         return jsonify(relacion), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ACTUALIZAR
 # ==========================================
 def actualizar_comision_consejero(id):
-
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR COMISION
-        # ==========================================
-        if "idComision" in datos:
-
-            comision = comisiones_collection.find_one({
-                "_id": ObjectId(datos["idComision"])
-            })
-
-            if not comision:
-
-                return jsonify({
-                    "error": "Comision no encontrada"
-                }), 404
-
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        if "idConsejero" in datos:
-
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(datos["idConsejero"])
-            })
-
-            if not consejero:
-
-                return jsonify({
-                    "error": "Consejero no encontrado"
-                }), 404
-
-        resultado = comision_consejeros_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": datos}
+        relacion = query(
+            "SELECT * FROM comisionconsejero WHERE ID_ComisionConsejero = %s",
+            (id,),
+            one=True
         )
+        if not relacion:
+            return jsonify({"error": "Relación no encontrada"}), 404
 
-        if resultado.matched_count == 0:
+        id_comision = datos.get("ID_Comision") or datos.get("idComision")
+        id_consejero = datos.get("ID_Consejero") or datos.get("idConsejero")
 
-            return jsonify({
-                "error": "Relacion no encontrada"
-            }), 404
+        if id_comision:
+            comision = query("SELECT * FROM comision WHERE ID_Comision = %s", (id_comision,), one=True)
+            if not comision:
+                return jsonify({"error": "Comisión no encontrada"}), 404
 
-        return jsonify({
-            "mensaje": "Relacion actualizada correctamente"
-        }), 200
+        if id_consejero:
+            consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id_consejero,), one=True)
+            if not consejero:
+                return jsonify({"error": "Consejero no encontrado"}), 404
+
+        campos = []
+        params = []
+
+        mapeo = {
+            "ID_Comision": id_comision,
+            "ID_Consejero": id_consejero,
+            "esOyente": datos.get("esOyente"),
+            "presente": datos.get("presente")
+        }
+
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
+
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
+
+        params.append(id)
+        sql = f"UPDATE comisionconsejero SET {', '.join(campos)} WHERE ID_ComisionConsejero = %s"
+
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Relación actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ELIMINAR
 # ==========================================
 def eliminar_comision_consejero(id):
-
     try:
+        relacion = query(
+            "SELECT * FROM comisionconsejero WHERE ID_ComisionConsejero = %s",
+            (id,),
+            one=True
+        )
+        if not relacion:
+            return jsonify({"error": "Relación no encontrada"}), 404
 
-        resultado = comision_consejeros_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM comisionconsejero WHERE ID_ComisionConsejero = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Relacion no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Relacion eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Relación eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

@@ -24,16 +24,16 @@ asistencia_bp.route(
 )(obtener_asistencias)
 
 asistencia_bp.route(
-    "/asistencias/<id>",
+    "/asistencias/<int:id>",
     methods=["GET"]
 )(obtener_asistencia_por_id)
 
 asistencia_bp.route(
-    "/asistencias/<id>",
+    "/asistencias/<int:id>",
     methods=["PUT"]
 )(actualizar_asistencia)
 
 asistencia_bp.route(
-    "/asistencias/<id>",
+    "/asistencias/<int:id>",
     methods=["DELETE"]
 )(eliminar_asistencia)

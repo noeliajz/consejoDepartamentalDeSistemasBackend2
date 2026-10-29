@@ -1,218 +1,180 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.acta_reunion_model import actas_reunion_collection
-from app.models.tema_model import temas_collection
+from app.config.db import query, execute, get_db
 
 # CREAR ACTA
 def crear_acta_reunion():
-
+    conn = None
     try:
-
         datos = request.json
 
-        acta = {
+        id_reunion = datos.get("ID_Reunion") or datos.get("reunion_id")
+        numero_acta = datos.get("numeroActa")
+        fecha_aprobacion = datos.get("fechaAprobacion") or datos.get("fecha")
+        descripcion = datos.get("descripcion")
+        estado = datos.get("estado", 0)
 
-            # RELACION CON REUNION
-            "reunion_id": datos.get("reunion_id"),
+        conn = get_db()
+        cur = conn.cursor()
 
-            # NUEVO CAMPO
-            "descripcion": datos.get("descripcion"),
+        sql_acta = """
+            INSERT INTO acta (ID_Reunion, numeroActa, fechaAprobacion, descripcion, estado)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        cur.execute(sql_acta, (id_reunion, numero_acta, fecha_aprobacion, descripcion, estado))
+        acta_id = cur.lastrowid
 
-            "fecha": datos.get("fecha"),
+        # ASIGNAR TEMAS SI EXISTEN
+        temas = datos.get("temas", [])
+        if temas:
+            sql_tema = "UPDATE tema SET estado = 'Asignado' WHERE ID_Tema = %s"
+            for tema_id in temas:
+                cur.execute(sql_tema, (tema_id,))
 
-            "consejeros": datos.get("consejeros"),
-
-            "temas": datos.get("temas", []),
-
-            "estado": datos.get("estado")
-        }
-
-        resultado = actas_reunion_collection.insert_one(acta)
-
-        acta_id = str(resultado.inserted_id)
-
-        # RELACIONAR TEMAS CON ACTA
-        for tema_id in acta["temas"]:
-
-            temas_collection.update_one(
-                {
-                    "_id": ObjectId(tema_id)
-                },
-                {
-                    "$set": {
-                        "acta_id": acta_id,
-                        "estado_acta": "Asignado"
-                    }
-                }
-            )
+        conn.commit()
 
         return jsonify({
-            "mensaje": "Acta creada",
+            "mensaje": "Acta creada correctamente",
             "id": acta_id
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 
 # OBTENER TODAS
-# OBTENER TODAS — con temas enriquecidos
 def obtener_actas_reunion():
-
     try:
+        sql = """
+            SELECT 
+                a.ID_Acta,
+                a.ID_Reunion,
+                a.numeroActa,
+                a.fechaAprobacion,
+                a.descripcion,
+                a.estado
+            FROM acta a
+        """
+        actas = query(sql)
 
-        actas = []
+        resultado = []
+        for acta in actas:
+            acta_dict = {
+                "ID_Acta": acta["ID_Acta"],
+                "ID_Reunion": acta["ID_Reunion"],
+                "numeroActa": acta["numeroActa"],
+                "fechaAprobacion": str(acta["fechaAprobacion"]) if acta["fechaAprobacion"] else None,
+                "descripcion": acta["descripcion"],
+                "estado": acta["estado"],
+                "temas": []
+            }
 
-        for acta in actas_reunion_collection.find():
+            # Si hay un temario asociado a la reunión, traemos los temas
+            if acta["ID_Reunion"]:
+                sql_temas = """
+                    SELECT t.ID_Tema, t.descripcion, t.estado
+                    FROM tema t
+                    JOIN temarioprovisorio tp ON t.ID_TemarioProvisorio = tp.ID_TemarioProvisorio
+                    WHERE tp.ID_Reunion = %s
+                """
+                temas = query(sql_temas, (acta["ID_Reunion"],))
+                acta_dict["temas"] = temas
 
-            acta["_id"] = str(acta["_id"])
+            resultado.append(acta_dict)
 
-            # ENRIQUECER TEMAS: reemplazar IDs por objetos con descripción
-            temas_enriquecidos = []
-
-            for tema_id in acta.get("temas", []):
-
-                try:
-
-                    temario = temas_collection.find_one({
-                        "_id": ObjectId(tema_id)
-                    })
-
-                    if temario:
-
-                        temas_enriquecidos.append({
-                            "_id": str(temario["_id"]),
-                            "descripcion": temario.get("descripcion", "Sin descripción"),
-                            "tema": temario.get("tema", "")
-                        })
-
-                    else:
-
-                        temas_enriquecidos.append({
-                            "_id": tema_id,
-                            "descripcion": "Tema no encontrado"
-                        })
-
-                except Exception:
-
-                    temas_enriquecidos.append({
-                        "_id": str(tema_id),
-                        "descripcion": "Error al obtener tema"
-                    })
-
-            acta["temas"] = temas_enriquecidos
-
-            actas.append(acta)
-
-        return jsonify(actas), 200
+        return jsonify(resultado), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # OBTENER POR ID
 def obtener_acta_reunion_por_id(id):
-
     try:
-
-        acta = actas_reunion_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        sql = "SELECT * FROM acta WHERE ID_Acta = %s"
+        acta = query(sql, (id,), one=True)
 
         if not acta:
+            return jsonify({"error": "Acta no encontrada"}), 404
 
-            return jsonify({
-                "error": "Acta no encontrada"
-            }), 404
+        acta_dict = {
+            "ID_Acta": acta["ID_Acta"],
+            "ID_Reunion": acta["ID_Reunion"],
+            "numeroActa": acta["numeroActa"],
+            "fechaAprobacion": str(acta["fechaAprobacion"]) if acta["fechaAprobacion"] else None,
+            "descripcion": acta["descripcion"],
+            "estado": acta["estado"],
+            "temas": []
+        }
 
-        acta["_id"] = str(acta["_id"])
+        if acta["ID_Reunion"]:
+            sql_temas = """
+                SELECT t.ID_Tema, t.descripcion, t.estado
+                FROM tema t
+                JOIN temarioprovisorio tp ON t.ID_TemarioProvisorio = tp.ID_TemarioProvisorio
+                WHERE tp.ID_Reunion = %s
+            """
+            acta_dict["temas"] = query(sql_temas, (acta["ID_Reunion"],))
 
-        return jsonify(acta), 200
+        return jsonify(acta_dict), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ACTUALIZAR
 def actualizar_acta_reunion(id):
-
     try:
-
         datos = request.json
 
-        acta_actualizada = {
+        acta = query("SELECT * FROM acta WHERE ID_Acta = %s", (id,), one=True)
+        if not acta:
+            return jsonify({"error": "Acta no encontrada"}), 404
 
-            "reunion_id": datos.get("reunion_id"),
+        campos = []
+        params = []
 
-            # NUEVO CAMPO
+        mapeo = {
+            "ID_Reunion": datos.get("ID_Reunion") or datos.get("reunion_id"),
+            "numeroActa": datos.get("numeroActa"),
+            "fechaAprobacion": datos.get("fechaAprobacion") or datos.get("fecha"),
             "descripcion": datos.get("descripcion"),
-
-            "fecha": datos.get("fecha"),
-
-            "consejeros": datos.get("consejeros"),
-
-            "temas": datos.get("temas", []),
-
             "estado": datos.get("estado")
         }
 
-        resultado = actas_reunion_collection.update_one(
-            {
-                "_id": ObjectId(id)
-            },
-            {
-                "$set": acta_actualizada
-            }
-        )
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-        if resultado.matched_count == 0:
+        if not campos:
+            return jsonify({"error": "No hay campos para actualizar"}), 400
 
-            return jsonify({
-                "error": "Acta no encontrada"
-            }), 404
+        params.append(id)
+        sql = f"UPDATE acta SET {', '.join(campos)} WHERE ID_Acta = %s"
 
-        return jsonify({
-            "mensaje": "Acta actualizada correctamente"
-        }), 200
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Acta actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ELIMINAR
 def eliminar_acta_reunion(id):
-
     try:
+        acta = query("SELECT * FROM acta WHERE ID_Acta = %s", (id,), one=True)
+        if not acta:
+            return jsonify({"error": "Acta no encontrada"}), 404
 
-        resultado = actas_reunion_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM acta WHERE ID_Acta = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Acta no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Acta eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Acta eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

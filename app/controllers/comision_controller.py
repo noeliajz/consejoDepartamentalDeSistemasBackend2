@@ -1,217 +1,113 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.comision_model import (
-    comisiones_collection
-)
-
+from app.config.db import query, execute
 
 # ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # OTROS
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
-
-
-# ==========================================
-# CREAR
+# CREAR COMISIÓN
 # ==========================================
 def crear_comision():
-
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CAMPOS
-        # ==========================================
-        campos = [
-            "hora",
-            "lugar",
-            "fechaReunion"
-        ]
+        nombre = datos.get("nombre")
+        descripcion = datos.get("descripcion")
 
-        for campo in campos:
+        if not nombre:
+            return jsonify({"error": "Falta el campo nombre"}), 400
 
-            if campo not in datos:
-
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
-
-        nueva_comision = {
-
-            "hora": datos["hora"],
-
-            "lugar": datos["lugar"],
-
-            "fechaReunion": datos["fechaReunion"]
-        }
-
-        resultado = comisiones_collection.insert_one(
-            nueva_comision
-        )
+        sql = """
+            INSERT INTO comision (nombre, descripcion)
+            VALUES (%s, %s)
+        """
+        id_insertado = execute(sql, (nombre, descripcion))
 
         return jsonify({
-            "mensaje": "Comision creada correctamente",
-            "id": str(resultado.inserted_id)
+            "mensaje": "Comisión creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER TODAS
 # ==========================================
 def obtener_comisiones():
-
     try:
-
-        comisiones = []
-
-        for comision in comisiones_collection.find():
-
-            comision = convertir_objectid(
-                comision
-            )
-
-            comisiones.append(comision)
+        sql = "SELECT ID_Comision, nombre, descripcion FROM comision"
+        comisiones = query(sql)
 
         return jsonify(comisiones), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # OBTENER POR ID
 # ==========================================
 def obtener_comision_por_id(id):
-
     try:
-
-        comision = comisiones_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        sql = "SELECT ID_Comision, nombre, descripcion FROM comision WHERE ID_Comision = %s"
+        comision = query(sql, (id,), one=True)
 
         if not comision:
-
-            return jsonify({
-                "error": "Comision no encontrada"
-            }), 404
-
-        comision = convertir_objectid(
-            comision
-        )
+            return jsonify({"error": "Comisión no encontrada"}), 404
 
         return jsonify(comision), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ACTUALIZAR
 # ==========================================
 def actualizar_comision(id):
-
     try:
-
         datos = request.json
 
-        resultado = comisiones_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": datos}
-        )
+        comision = query("SELECT * FROM comision WHERE ID_Comision = %s", (id,), one=True)
+        if not comision:
+            return jsonify({"error": "Comisión no encontrada"}), 404
 
-        if resultado.matched_count == 0:
+        campos = []
+        params = []
 
-            return jsonify({
-                "error": "Comision no encontrada"
-            }), 404
+        if "nombre" in datos:
+            campos.append("nombre = %s")
+            params.append(datos["nombre"])
 
-        return jsonify({
-            "mensaje": "Comision actualizada correctamente"
-        }), 200
+        if "descripcion" in datos:
+            campos.append("descripcion = %s")
+            params.append(datos["descripcion"])
+
+        if not campos:
+            return jsonify({"error": "No hay campos para actualizar"}), 400
+
+        params.append(id)
+        sql = f"UPDATE comision SET {', '.join(campos)} WHERE ID_Comision = %s"
+
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Comisión actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
 # ELIMINAR
 # ==========================================
 def eliminar_comision(id):
-
     try:
+        comision = query("SELECT * FROM comision WHERE ID_Comision = %s", (id,), one=True)
+        if not comision:
+            return jsonify({"error": "Comisión no encontrada"}), 404
 
-        resultado = comisiones_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM comision WHERE ID_Comision = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Comision no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Comision eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Comisión eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

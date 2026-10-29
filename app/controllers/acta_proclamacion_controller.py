@@ -1,57 +1,5 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.acta_proclamacion_model import (
-    actas_proclamacion_collection
-)
-
-from app.models.citacion_model import (
-    citaciones_collection
-)
-
-
-# ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
+from app.config.db import query, execute
 
 
 # ==========================================
@@ -59,66 +7,43 @@ def convertir_objectid(documento):
 # ==========================================
 def crear_acta_proclamacion():
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CAMPOS
-        # ==========================================
-        campos = [
-            "idCitacion",
-            "numeroActa",
-            "fecha",
-            "informe",
-            "aprobado"
-        ]
-
+        campos = ["ID_Constitucion", "numeroActa", "fecha", "informe", "aprobado"]
         for campo in campos:
-
             if campo not in datos:
+                return jsonify({"error": f"Falta el campo {campo}"}), 400
 
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
+        # Validar si existe la Constitución
+        constitucion = query(
+            "SELECT * FROM constitucion WHERE ID_Constitucion = %s",
+            (datos["ID_Constitucion"],),
+            one=True
+        )
+        if not constitucion:
+            return jsonify({"error": "Constitución no encontrada"}), 404
 
-        # ==========================================
-        # VALIDAR CITACION
-        # ==========================================
-        citacion = citaciones_collection.find_one({
-            "_id": ObjectId(datos["idCitacion"])
-        })
-
-        if not citacion:
-
-            return jsonify({
-                "error": "Citacion no encontrada"
-            }), 404
-
-        # ==========================================
-        # CREAR ACTA
-        # ==========================================
-        nueva_acta = {
-            "idCitacion": datos["idCitacion"],
-            "numeroActa": datos["numeroActa"],
-            "fecha": datos["fecha"],
-            "informe": datos["informe"],
-            "aprobado": datos["aprobado"]
-        }
-
-        resultado = actas_proclamacion_collection.insert_one(
-            nueva_acta
+        sql = """
+            INSERT INTO actadeproclamacion (ID_Constitucion, numeroActa, fecha, informe, aprobado)
+            VALUES (%s, %s, %s, %s, %s)
+        """
+        params = (
+            datos["ID_Constitucion"],
+            datos["numeroActa"],
+            datos["fecha"],
+            datos["informe"],
+            datos["aprobado"]
         )
 
+        id_insertado = execute(sql, params)
+
         return jsonify({
-            "mensaje": "Acta proclamacion creada correctamente",
-            "id": str(resultado.inserted_id)
+            "mensaje": "Acta de proclamación creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -126,39 +51,44 @@ def crear_acta_proclamacion():
 # ==========================================
 def obtener_actas_proclamacion():
     try:
+        sql = """
+            SELECT 
+                a.ID_ActaProclamacion,
+                a.ID_Constitucion,
+                a.numeroActa,
+                a.fecha,
+                a.informe,
+                a.aprobado,
+                c.fechaInicio AS constitucion_fechaInicio,
+                c.fechaFin AS constitucion_fechaFin,
+                c.descripcion AS constitucion_descripcion
+            FROM actadeproclamacion a
+            LEFT JOIN constitucion c ON a.ID_Constitucion = c.ID_Constitucion
+        """
+        rows = query(sql)
 
-        lista = []
+        resultado = []
+        for row in rows:
+            acta = {
+                "ID_ActaProclamacion": row["ID_ActaProclamacion"],
+                "ID_Constitucion": row["ID_Constitucion"],
+                "numeroActa": row["numeroActa"],
+                "fecha": str(row["fecha"]) if row["fecha"] else None,
+                "informe": row["informe"],
+                "aprobado": row["aprobado"],
+                "constitucion": {
+                    "ID_Constitucion": row["ID_Constitucion"],
+                    "fechaInicio": str(row["constitucion_fechaInicio"]) if row["constitucion_fechaInicio"] else None,
+                    "fechaFin": str(row["constitucion_fechaFin"]) if row["constitucion_fechaFin"] else None,
+                    "descripcion": row["constitucion_descripcion"]
+                } if row["ID_Constitucion"] else None
+            }
+            resultado.append(acta)
 
-        for acta in actas_proclamacion_collection.find():
-
-            # CONVERTIR OBJECTID
-            acta = convertir_objectid(acta)
-
-            # ==========================================
-            # BUSCAR CITACION
-            # ==========================================
-            citacion = citaciones_collection.find_one({
-                "_id": ObjectId(acta["idCitacion"])
-            })
-
-            if citacion:
-
-                citacion = convertir_objectid(citacion)
-
-            # ==========================================
-            # AGREGAR RELACION
-            # ==========================================
-            acta["citacion"] = citacion
-
-            lista.append(acta)
-
-        return jsonify(lista), 200
+        return jsonify(resultado), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -166,43 +96,45 @@ def obtener_actas_proclamacion():
 # ==========================================
 def obtener_acta_proclamacion_por_id(id):
     try:
+        sql = """
+            SELECT 
+                a.ID_ActaProclamacion,
+                a.ID_Constitucion,
+                a.numeroActa,
+                a.fecha,
+                a.informe,
+                a.aprobado,
+                c.fechaInicio AS constitucion_fechaInicio,
+                c.fechaFin AS constitucion_fechaFin,
+                c.descripcion AS constitucion_descripcion
+            FROM actadeproclamacion a
+            LEFT JOIN constitucion c ON a.ID_Constitucion = c.ID_Constitucion
+            WHERE a.ID_ActaProclamacion = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        acta = actas_proclamacion_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        if not row:
+            return jsonify({"error": "Acta de proclamación no encontrada"}), 404
 
-        if not acta:
-
-            return jsonify({
-                "error": "Acta proclamacion no encontrada"
-            }), 404
-
-        # CONVERTIR OBJECTID
-        acta = convertir_objectid(acta)
-
-        # ==========================================
-        # BUSCAR CITACION
-        # ==========================================
-        citacion = citaciones_collection.find_one({
-            "_id": ObjectId(acta["idCitacion"])
-        })
-
-        if citacion:
-
-            citacion = convertir_objectid(citacion)
-
-        # ==========================================
-        # AGREGAR RELACION
-        # ==========================================
-        acta["citacion"] = citacion
+        acta = {
+            "ID_ActaProclamacion": row["ID_ActaProclamacion"],
+            "ID_Constitucion": row["ID_Constitucion"],
+            "numeroActa": row["numeroActa"],
+            "fecha": str(row["fecha"]) if row["fecha"] else None,
+            "informe": row["informe"],
+            "aprobado": row["aprobado"],
+            "constitucion": {
+                "ID_Constitucion": row["ID_Constitucion"],
+                "fechaInicio": str(row["constitucion_fechaInicio"]) if row["constitucion_fechaInicio"] else None,
+                "fechaFin": str(row["constitucion_fechaFin"]) if row["constitucion_fechaFin"] else None,
+                "descripcion": row["constitucion_descripcion"]
+            } if row["ID_Constitucion"] else None
+        }
 
         return jsonify(acta), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -210,47 +142,37 @@ def obtener_acta_proclamacion_por_id(id):
 # ==========================================
 def actualizar_acta_proclamacion(id):
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CITACION
-        # ==========================================
-        if "idCitacion" in datos:
+        if "ID_Constitucion" in datos:
+            constitucion = query(
+                "SELECT * FROM constitucion WHERE ID_Constitucion = %s",
+                (datos["ID_Constitucion"],),
+                one=True
+            )
+            if not constitucion:
+                return jsonify({"error": "Constitución no encontrada"}), 404
 
-            citacion = citaciones_collection.find_one({
-                "_id": ObjectId(datos["idCitacion"])
-            })
+        campos = []
+        params = []
 
-            if not citacion:
+        for clave in ["ID_Constitucion", "numeroActa", "fecha", "informe", "aprobado"]:
+            if clave in datos:
+                campos.append(f"{clave} = %s")
+                params.append(datos[clave])
 
-                return jsonify({
-                    "error": "Citacion no encontrada"
-                }), 404
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-        # ==========================================
-        # ACTUALIZAR
-        # ==========================================
-        resultado = actas_proclamacion_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": datos}
-        )
+        params.append(id)
+        sql = f"UPDATE actadeproclamacion SET {', '.join(campos)} WHERE ID_ActaProclamacion = %s"
 
-        if resultado.matched_count == 0:
+        execute(sql, params)
 
-            return jsonify({
-                "error": "Acta proclamacion no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Acta proclamacion actualizada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Acta de proclamación actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -258,23 +180,17 @@ def actualizar_acta_proclamacion(id):
 # ==========================================
 def eliminar_acta_proclamacion(id):
     try:
+        acta = query(
+            "SELECT * FROM actadeproclamacion WHERE ID_ActaProclamacion = %s",
+            (id,),
+            one=True
+        )
+        if not acta:
+            return jsonify({"error": "Acta de proclamación no encontrada"}), 404
 
-        resultado = actas_proclamacion_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM actadeproclamacion WHERE ID_ActaProclamacion = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Acta proclamacion no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Acta proclamacion eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Acta de proclamación eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

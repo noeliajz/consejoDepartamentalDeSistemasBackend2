@@ -1,3 +1,9 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-estadisticas_collection = db["estadisticas"]
+@dataclass
+class EstadisticaModel:
+    ID_Estadistica: Optional[int]
+    tipo: str
+    valor: float
+    fechaCalculo: str

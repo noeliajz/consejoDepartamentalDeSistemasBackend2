@@ -3,8 +3,8 @@ from flask_cors import CORS
 
 from app.routes.expediente_routes import expediente_bp
 from app.routes.usuario_routes import usuario_bp
-from app.routes.acta_proclamacion_routes import  acta_proclamacion_bp
-from app.routes.acta_reunion_routes import  acta_reunion_bp
+from app.routes.acta_proclamacion_routes import acta_proclamacion_bp
+from app.routes.acta_reunion_routes import acta_reunion_bp
 from app.routes.asistencia_routes import asistencia_bp
 from app.routes.citacion_routes import citacion_bp
 from app.routes.comision_routes import comision_bp
@@ -17,14 +17,12 @@ from app.routes.temario_routes import temario_bp
 from app.routes.auth_routes import auth_bp
 from app.routes.dashboard_routes import dashboard_bp
 from app.routes.votacion_routes import votacion_bp
-from app.routes.consejero_routes import (consejero_bp)
-from app.routes.licencia_routes import (licencia_bp)
-from app.routes.constitucion_routes import (constitucion_bp)
-from app.routes.comision_consejero_routes import (comision_consejero_bp)
-
+from app.routes.consejero_routes import consejero_bp
+from app.routes.licencia_routes import licencia_bp
+from app.routes.constitucion_routes import constitucion_bp
+from app.routes.comision_consejero_routes import comision_consejero_bp
 
 app = Flask(__name__)
-
 CORS(app)
 
 @app.route("/")

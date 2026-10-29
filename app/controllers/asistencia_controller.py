@@ -1,16 +1,5 @@
-# app/controllers/asistencia_controller.py
-
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.asistencia_model import (
-    asistencias_collection
-)
-
-from app.models.reunion_model import (
-    reuniones_collection
-)
-
+from app.config.db import query, execute
 
 # =========================
 # CREAR
@@ -19,53 +8,47 @@ def crear_asistencia():
     try:
         datos = request.json
 
-        nueva_asistencia = {
+        id_consejero = datos.get("ID_Consejero") or datos.get("consejero_id")
+        id_reunion = datos.get("ID_Reunion") or datos.get("reunion_id")
+        estado = datos.get("estado")
+        fecha = datos.get("fecha")
 
-            "fecha": datos.get(
-                "fecha"
-            ),
+        if not id_consejero or not id_reunion or not estado or not fecha:
+            return jsonify({
+                "error": "Faltan campos obligatorios (ID_Consejero, ID_Reunion, estado, fecha)"
+            }), 400
 
-            # Presente o Ausente
-            "estado": datos.get(
-                "estado"
-            ),
-
-            # Si o No
-            "licencia": datos.get(
-                "licencia"
-            ),
-            # RELACION CON CONSEJERO
-            "consejero_id": datos.get(
-                "consejero_id"
-            ),
-
-            # RELACION CON REUNION
-            "reunion_id": datos.get(
-                "reunion_id"
-            )
-        }
-
-        resultado = (
-            asistencias_collection.insert_one(
-                nueva_asistencia
-            )
+        # Validar existencia de Consejero
+        consejero = query(
+            "SELECT * FROM consejero WHERE ID_Consejero = %s",
+            (id_consejero,),
+            one=True
         )
+        if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
+
+        # Validar existencia de Reunión
+        reunion = query(
+            "SELECT * FROM reunion WHERE ID_Reunion = %s",
+            (id_reunion,),
+            one=True
+        )
+        if not reunion:
+            return jsonify({"error": "Reunión no encontrada"}), 404
+
+        sql = """
+            INSERT INTO asistencia (ID_Consejero, ID_Reunion, estado, fecha)
+            VALUES (%s, %s, %s, %s)
+        """
+        id_insertado = execute(sql, (id_consejero, id_reunion, estado, fecha))
 
         return jsonify({
-            "mensaje":
-                "Asistencia creada correctamente",
-
-            "id":
-                str(
-                    resultado.inserted_id
-                )
+            "mensaje": "Asistencia creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -73,93 +56,42 @@ def crear_asistencia():
 # =========================
 def obtener_asistencias():
     try:
+        sql = """
+            SELECT 
+                a.ID_Asistencia,
+                a.ID_Consejero,
+                a.ID_Reunion,
+                a.estado,
+                a.fecha,
+                r.tipo AS reunion_tipo,
+                r.fecha AS reunion_fecha,
+                r.lugar AS reunion_lugar
+            FROM asistencia a
+            LEFT JOIN reunion r ON a.ID_Reunion = r.ID_Reunion
+        """
+        rows = query(sql)
+
         asistencias = []
+        for row in rows:
+            item = {
+                "ID_Asistencia": row["ID_Asistencia"],
+                "ID_Consejero": row["ID_Consejero"],
+                "ID_Reunion": row["ID_Reunion"],
+                "estado": row["estado"],
+                "fecha": str(row["fecha"]) if row["fecha"] else None,
+                "reunion": {
+                    "ID_Reunion": row["ID_Reunion"],
+                    "tipo": row["reunion_tipo"],
+                    "fecha": str(row["reunion_fecha"]) if row["reunion_fecha"] else None,
+                    "lugar": row["reunion_lugar"]
+                } if row["ID_Reunion"] else None
+            }
+            asistencias.append(item)
 
-        for asistencia in (
-            asistencias_collection.find()
-        ):
-
-            asistencia["_id"] = str(
-                asistencia["_id"]
-            )
-
-            # =========================
-            # RELACION CON REUNION
-            # =========================
-            reunion = None
-
-            reunion_id = asistencia.get(
-                "reunion_id"
-            )
-
-            if reunion_id:
-
-                # si viene string
-                if isinstance(
-                    reunion_id,
-                    str
-                ):
-
-                    reunion = (
-                        reuniones_collection.find_one({
-                            "_id":
-                                ObjectId(
-                                    reunion_id
-                                )
-                        })
-                    )
-
-                # si viene ObjectId
-                else:
-
-                    reunion = (
-                        reuniones_collection.find_one({
-                            "_id":
-                                reunion_id
-                        })
-                    )
-
-            # =========================
-            # DATOS REUNION
-            # =========================
-            if reunion:
-
-                asistencia["reunion"] = {
-                    "_id":
-                        str(
-                            reunion["_id"]
-                        ),
-
-                    "tema":
-                        reunion.get(
-                            "tema",
-                            ""
-                        ),
-
-                    "fecha":
-                        reunion.get(
-                            "fecha",
-                            ""
-                        )
-                }
-
-            else:
-
-                asistencia["reunion"] = None
-
-            asistencias.append(
-                asistencia
-            )
-
-        return jsonify(
-            asistencias
-        ), 200
+        return jsonify(asistencias), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -167,92 +99,43 @@ def obtener_asistencias():
 # =========================
 def obtener_asistencia_por_id(id):
     try:
-        asistencia = (
-            asistencias_collection.find_one({
-                "_id": ObjectId(id)
-            })
-        )
+        sql = """
+            SELECT 
+                a.ID_Asistencia,
+                a.ID_Consejero,
+                a.ID_Reunion,
+                a.estado,
+                a.fecha,
+                r.tipo AS reunion_tipo,
+                r.fecha AS reunion_fecha,
+                r.lugar AS reunion_lugar
+            FROM asistencia a
+            LEFT JOIN reunion r ON a.ID_Reunion = r.ID_Reunion
+            WHERE a.ID_Asistencia = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        if not asistencia:
+        if not row:
+            return jsonify({"error": "Asistencia no encontrada"}), 404
 
-            return jsonify({
-                "error":
-                    "Asistencia no encontrada"
-            }), 404
+        asistencia = {
+            "ID_Asistencia": row["ID_Asistencia"],
+            "ID_Consejero": row["ID_Consejero"],
+            "ID_Reunion": row["ID_Reunion"],
+            "estado": row["estado"],
+            "fecha": str(row["fecha"]) if row["fecha"] else None,
+            "reunion": {
+                "ID_Reunion": row["ID_Reunion"],
+                "tipo": row["reunion_tipo"],
+                "fecha": str(row["reunion_fecha"]) if row["reunion_fecha"] else None,
+                "lugar": row["reunion_lugar"]
+            } if row["ID_Reunion"] else None
+        }
 
-        asistencia["_id"] = str(
-            asistencia["_id"]
-        )
-
-        # =========================
-        # RELACION CON REUNION
-        # =========================
-        reunion = None
-
-        reunion_id = asistencia.get(
-            "reunion_id"
-        )
-
-        if reunion_id:
-
-            if isinstance(
-                reunion_id,
-                str
-            ):
-
-                reunion = (
-                    reuniones_collection.find_one({
-                        "_id":
-                            ObjectId(
-                                reunion_id
-                            )
-                    })
-                )
-
-            else:
-
-                reunion = (
-                    reuniones_collection.find_one({
-                        "_id":
-                            reunion_id
-                    })
-                )
-
-        if reunion:
-
-            asistencia["reunion"] = {
-
-                "_id":
-                    str(
-                        reunion["_id"]
-                    ),
-
-                "tema":
-                    reunion.get(
-                        "tema",
-                        ""
-                    ),
-
-                "fecha":
-                    reunion.get(
-                        "fecha",
-                        ""
-                    )
-            }
-
-        else:
-
-            asistencia["reunion"] = None
-
-        return jsonify(
-            asistencia
-        ), 200
+        return jsonify(asistencia), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -262,58 +145,41 @@ def actualizar_asistencia(id):
     try:
         datos = request.json
 
-        asistencia_actualizada = {
+        asistencia = query(
+            "SELECT * FROM asistencia WHERE ID_Asistencia = %s",
+            (id,),
+            one=True
+        )
+        if not asistencia:
+            return jsonify({"error": "Asistencia no encontrada"}), 404
 
-            "fecha": datos.get(
-                "fecha"
-            ),
+        campos = []
+        params = []
 
-            "estado": datos.get(
-                "estado"
-            ),
-
-            "licencia": datos.get(
-                "licencia"
-            ),
-
-            "reunion_id": datos.get(
-                "reunion_id"
-            ),
-            "consejero_id": datos.get(
-                "consejero_id"
-            )
+        mapeo = {
+            "ID_Consejero": datos.get("ID_Consejero") or datos.get("consejero_id"),
+            "ID_Reunion": datos.get("ID_Reunion") or datos.get("reunion_id"),
+            "estado": datos.get("estado"),
+            "fecha": datos.get("fecha")
         }
 
-        resultado = (
-            asistencias_collection.update_one(
-                {
-                    "_id":
-                        ObjectId(id)
-                },
-                {
-                    "$set":
-                        asistencia_actualizada
-                }
-            )
-        )
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-        if resultado.matched_count == 0:
+        if not campos:
+            return jsonify({"error": "No hay datos para actualizar"}), 400
 
-            return jsonify({
-                "error":
-                    "Asistencia no encontrada"
-            }), 404
+        params.append(id)
+        sql = f"UPDATE asistencia SET {', '.join(campos)} WHERE ID_Asistencia = %s"
 
-        return jsonify({
-            "mensaje":
-                "Asistencia actualizada correctamente"
-        }), 200
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Asistencia actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # =========================
@@ -321,27 +187,17 @@ def actualizar_asistencia(id):
 # =========================
 def eliminar_asistencia(id):
     try:
-        resultado = (
-            asistencias_collection.delete_one({
-                "_id":
-                    ObjectId(id)
-            })
+        asistencia = query(
+            "SELECT * FROM asistencia WHERE ID_Asistencia = %s",
+            (id,),
+            one=True
         )
+        if not asistencia:
+            return jsonify({"error": "Asistencia no encontrada"}), 404
 
-        if resultado.deleted_count == 0:
+        execute("DELETE FROM asistencia WHERE ID_Asistencia = %s", (id,))
 
-            return jsonify({
-                "error":
-                    "Asistencia no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje":
-                "Asistencia eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Asistencia eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

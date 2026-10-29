@@ -24,16 +24,16 @@ acta_proclamacion_bp.route(
 )(obtener_actas_proclamacion)
 
 acta_proclamacion_bp.route(
-    "/actas-proclamacion/<id>",
+    "/actas-proclamacion/<int:id>",
     methods=["GET"]
 )(obtener_acta_proclamacion_por_id)
 
 acta_proclamacion_bp.route(
-    "/actas-proclamacion/<id>",
+    "/actas-proclamacion/<int:id>",
     methods=["PUT"]
 )(actualizar_acta_proclamacion)
 
 acta_proclamacion_bp.route(
-    "/actas-proclamacion/<id>",
+    "/actas-proclamacion/<int:id>",
     methods=["DELETE"]
 )(eliminar_acta_proclamacion)

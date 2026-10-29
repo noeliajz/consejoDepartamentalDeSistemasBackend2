@@ -1,3 +1,10 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-temarios_collection = db["temarios"]
+@dataclass
+class TemarioModel:
+    ID_TemarioProvisorio: Optional[int]
+    ID_Reunion: int
+    estado: str
+    fechaCreacion: str
+    descripcion: Optional[str] = None

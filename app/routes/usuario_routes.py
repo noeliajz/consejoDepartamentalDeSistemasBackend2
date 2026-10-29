@@ -24,16 +24,16 @@ usuario_bp.route(
 )(obtener_usuarios)
 
 usuario_bp.route(
-    "/usuarios/<id>",
+    "/usuarios/<int:id>",
     methods=["GET"]
 )(obtener_usuario_por_id)
 
 usuario_bp.route(
-    "/usuarios/<id>",
+    "/usuarios/<int:id>",
     methods=["PUT"]
 )(actualizar_usuario)
 
 usuario_bp.route(
-    "/usuarios/<id>",
+    "/usuarios/<int:id>",
     methods=["DELETE"]
 )(eliminar_usuario)

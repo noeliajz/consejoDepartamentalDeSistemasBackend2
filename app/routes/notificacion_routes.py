@@ -24,16 +24,16 @@ notificacion_bp.route(
 )(obtener_notificaciones)
 
 notificacion_bp.route(
-    "/notificaciones/<id>",
+    "/notificaciones/<int:id>",
     methods=["GET"]
 )(obtener_notificacion_por_id)
 
 notificacion_bp.route(
-    "/notificaciones/<id>",
+    "/notificaciones/<int:id>",
     methods=["PUT"]
 )(actualizar_notificacion)
 
 notificacion_bp.route(
-    "/notificaciones/<id>",
+    "/notificaciones/<int:id>",
     methods=["DELETE"]
 )(eliminar_notificacion)

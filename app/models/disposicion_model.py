@@ -1,3 +1,11 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-disposiciones_collection = db["disposiciones"]
+@dataclass
+class DisposicionModel:
+    ID_Disposicion: Optional[int]
+    ID_Tema: int
+    numero: str
+    fecha: str
+    resumen: Optional[str] = None
+    archivoPdf: Optional[str] = None

@@ -1,134 +1,63 @@
 from flask import request, jsonify
-from bson import ObjectId
-
-from app.models.citacion_model import citaciones_collection
-from app.models.consejero_model import consejeros_collection
-from app.models.reunion_model import reuniones_collection
-
-
-# ==========================================
-# CONVERTIR OBJECTID A STRING
-# ==========================================
-def convertir_objectid(documento):
-
-    # SI ES LISTA
-    if isinstance(documento, list):
-
-        return [
-            convertir_objectid(item)
-            for item in documento
-        ]
-
-    # SI ES DICCIONARIO
-    elif isinstance(documento, dict):
-
-        nuevo_documento = {}
-
-        for key, value in documento.items():
-
-            # OBJECTID
-            if isinstance(value, ObjectId):
-
-                nuevo_documento[key] = str(value)
-
-            # DICCIONARIO
-            elif isinstance(value, dict):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # LISTA
-            elif isinstance(value, list):
-
-                nuevo_documento[key] = convertir_objectid(value)
-
-            # OTROS TIPOS
-            else:
-
-                nuevo_documento[key] = value
-
-        return nuevo_documento
-
-    return documento
-
+from app.config.db import query, execute
 
 # ==========================================
 # CREAR CITACION
 # ==========================================
 def crear_citacion():
     try:
-
         datos = request.json
 
-        # VALIDAR CAMPOS
-        campos = [
-            "idConsejero",
-            "idReunion",
-            "fechaEnvio",
-            "fechaReunion",
-            "canal",
-            "diasAnticipacion"
-        ]
+        id_consejero = datos.get("ID_Consejero") or datos.get("idConsejero")
+        id_reunion = datos.get("ID_Reunion") or datos.get("idReunion")
+        fecha_envio = datos.get("fechaEnvio")
+        fecha_reunion = datos.get("fechaReunion")
+        canal = datos.get("canal")
+        dias_anticipacion = datos.get("diasAnticipacion")
 
-        for campo in campos:
+        # VALIDAR CAMPOS OBLIGATORIOS
+        if not id_consejero or not id_reunion:
+            return jsonify({
+                "error": "Faltan los campos obligatorios idConsejero e idReunion"
+            }), 400
 
-            if campo not in datos:
-
-                return jsonify({
-                    "error": f"Falta el campo {campo}"
-                }), 400
-
-        # ==========================================
         # VALIDAR CONSEJERO
-        # ==========================================
-        consejero = consejeros_collection.find_one({
-            "_id": ObjectId(datos["idConsejero"])
-        })
-
+        consejero = query(
+            "SELECT * FROM consejero WHERE ID_Consejero = %s",
+            (id_consejero,),
+            one=True
+        )
         if not consejero:
+            return jsonify({"error": "Consejero no encontrado"}), 404
 
-            return jsonify({
-                "error": "Consejero no encontrado"
-            }), 404
-
-        # ==========================================
         # VALIDAR REUNION
-        # ==========================================
-        reunion = reuniones_collection.find_one({
-            "_id": ObjectId(datos["idReunion"])
-        })
-
+        reunion = query(
+            "SELECT * FROM reunion WHERE ID_Reunion = %s",
+            (id_reunion,),
+            one=True
+        )
         if not reunion:
+            return jsonify({"error": "Reunión no encontrada"}), 404
 
-            return jsonify({
-                "error": "Reunion no encontrada"
-            }), 404
-
-        # ==========================================
-        # CREAR DOCUMENTO
-        # ==========================================
-        nueva_citacion = {
-            "idConsejero": datos["idConsejero"],
-            "idReunion": datos["idReunion"],
-            "fechaEnvio": datos["fechaEnvio"],
-            "fechaReunion": datos["fechaReunion"],
-            "canal": datos["canal"],
-            "diasAnticipacion": datos["diasAnticipacion"]
-        }
-
-        resultado = citaciones_collection.insert_one(
-            nueva_citacion
+        sql = """
+            INSERT INTO citacion (
+                ID_Consejero, ID_Reunion, fechaEnvio, fechaReunion, canal, diasAnticipacion
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        params = (
+            id_consejero, id_reunion, fecha_envio, fecha_reunion, canal, dias_anticipacion
         )
 
+        id_insertado = execute(sql, params)
+
         return jsonify({
-            "mensaje": "Citacion creada correctamente",
-            "id": str(resultado.inserted_id)
+            "mensaje": "Citación creada correctamente",
+            "id": id_insertado
         }), 201
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -136,51 +65,53 @@ def crear_citacion():
 # ==========================================
 def obtener_citaciones():
     try:
+        sql = """
+            SELECT 
+                c.ID_Citacion,
+                c.ID_Consejero,
+                c.ID_Reunion,
+                c.fechaEnvio,
+                c.fechaReunion,
+                c.canal,
+                c.diasAnticipacion,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido,
+                r.tipo AS reunion_tipo,
+                r.fecha AS reunion_fecha
+            FROM citacion c
+            LEFT JOIN consejero co ON c.ID_Consejero = co.ID_Consejero
+            LEFT JOIN usuario u ON co.ID_Usuario = u.ID_Usuario
+            LEFT JOIN reunion r ON c.ID_Reunion = r.ID_Reunion
+        """
+        rows = query(sql)
 
         lista = []
-
-        for citacion in citaciones_collection.find():
-
-            # CONVERTIR OBJECTID
-            citacion = convertir_objectid(citacion)
-
-            # ==========================================
-            # BUSCAR CONSEJERO
-            # ==========================================
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(citacion["idConsejero"])
-            })
-
-            if consejero:
-
-                consejero = convertir_objectid(consejero)
-
-            # ==========================================
-            # BUSCAR REUNION
-            # ==========================================
-            reunion = reuniones_collection.find_one({
-                "_id": ObjectId(citacion["idReunion"])
-            })
-
-            if reunion:
-
-                reunion = convertir_objectid(reunion)
-
-            # ==========================================
-            # AGREGAR RELACIONES
-            # ==========================================
-            citacion["consejero"] = consejero
-            citacion["reunion"] = reunion
-
-            lista.append(citacion)
+        for row in rows:
+            item = {
+                "ID_Citacion": row["ID_Citacion"],
+                "ID_Consejero": row["ID_Consejero"],
+                "ID_Reunion": row["ID_Reunion"],
+                "fechaEnvio": str(row["fechaEnvio"]) if row["fechaEnvio"] else None,
+                "fechaReunion": str(row["fechaReunion"]) if row["fechaReunion"] else None,
+                "canal": row["canal"],
+                "diasAnticipacion": row["diasAnticipacion"],
+                "consejero": {
+                    "ID_Consejero": row["ID_Consejero"],
+                    "nombre": row["consejero_nombre"],
+                    "apellido": row["consejero_apellido"]
+                } if row["ID_Consejero"] else None,
+                "reunion": {
+                    "ID_Reunion": row["ID_Reunion"],
+                    "tipo": row["reunion_tipo"],
+                    "fecha": str(row["reunion_fecha"]) if row["reunion_fecha"] else None
+                } if row["ID_Reunion"] else None
+            }
+            lista.append(item)
 
         return jsonify(lista), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -188,55 +119,54 @@ def obtener_citaciones():
 # ==========================================
 def obtener_citacion_por_id(id):
     try:
+        sql = """
+            SELECT 
+                c.ID_Citacion,
+                c.ID_Consejero,
+                c.ID_Reunion,
+                c.fechaEnvio,
+                c.fechaReunion,
+                c.canal,
+                c.diasAnticipacion,
+                u.nombre AS consejero_nombre,
+                u.apellido AS consejero_apellido,
+                r.tipo AS reunion_tipo,
+                r.fecha AS reunion_fecha
+            FROM citacion c
+            LEFT JOIN consejero co ON c.ID_Consejero = co.ID_Consejero
+            LEFT JOIN usuario u ON co.ID_Usuario = u.ID_Usuario
+            LEFT JOIN reunion r ON c.ID_Reunion = r.ID_Reunion
+            WHERE c.ID_Citacion = %s
+        """
+        row = query(sql, (id,), one=True)
 
-        citacion = citaciones_collection.find_one({
-            "_id": ObjectId(id)
-        })
+        if not row:
+            return jsonify({"error": "Citación no encontrada"}), 404
 
-        if not citacion:
-
-            return jsonify({
-                "error": "Citacion no encontrada"
-            }), 404
-
-        # CONVERTIR OBJECTID
-        citacion = convertir_objectid(citacion)
-
-        # ==========================================
-        # BUSCAR CONSEJERO
-        # ==========================================
-        consejero = consejeros_collection.find_one({
-            "_id": ObjectId(citacion["idConsejero"])
-        })
-
-        if consejero:
-
-            consejero = convertir_objectid(consejero)
-
-        # ==========================================
-        # BUSCAR REUNION
-        # ==========================================
-        reunion = reuniones_collection.find_one({
-            "_id": ObjectId(citacion["idReunion"])
-        })
-
-        if reunion:
-
-            reunion = convertir_objectid(reunion)
-
-        # ==========================================
-        # AGREGAR RELACIONES
-        # ==========================================
-        citacion["consejero"] = consejero
-        citacion["reunion"] = reunion
+        citacion = {
+            "ID_Citacion": row["ID_Citacion"],
+            "ID_Consejero": row["ID_Consejero"],
+            "ID_Reunion": row["ID_Reunion"],
+            "fechaEnvio": str(row["fechaEnvio"]) if row["fechaEnvio"] else None,
+            "fechaReunion": str(row["fechaReunion"]) if row["fechaReunion"] else None,
+            "canal": row["canal"],
+            "diasAnticipacion": row["diasAnticipacion"],
+            "consejero": {
+                "ID_Consejero": row["ID_Consejero"],
+                "nombre": row["consejero_nombre"],
+                "apellido": row["consejero_apellido"]
+            } if row["ID_Consejero"] else None,
+            "reunion": {
+                "ID_Reunion": row["ID_Reunion"],
+                "tipo": row["reunion_tipo"],
+                "fecha": str(row["reunion_fecha"]) if row["reunion_fecha"] else None
+            } if row["ID_Reunion"] else None
+        }
 
         return jsonify(citacion), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -244,62 +174,54 @@ def obtener_citacion_por_id(id):
 # ==========================================
 def actualizar_citacion(id):
     try:
-
         datos = request.json
 
-        # ==========================================
-        # VALIDAR CONSEJERO
-        # ==========================================
-        if "idConsejero" in datos:
+        citacion = query("SELECT * FROM citacion WHERE ID_Citacion = %s", (id,), one=True)
+        if not citacion:
+            return jsonify({"error": "Citación no encontrada"}), 404
 
-            consejero = consejeros_collection.find_one({
-                "_id": ObjectId(datos["idConsejero"])
-            })
+        id_consejero = datos.get("ID_Consejero") or datos.get("idConsejero")
+        id_reunion = datos.get("ID_Reunion") or datos.get("idReunion")
 
+        if id_consejero:
+            consejero = query("SELECT * FROM consejero WHERE ID_Consejero = %s", (id_consejero,), one=True)
             if not consejero:
+                return jsonify({"error": "Consejero no encontrado"}), 404
 
-                return jsonify({
-                    "error": "Consejero no encontrado"
-                }), 404
-
-        # ==========================================
-        # VALIDAR REUNION
-        # ==========================================
-        if "idReunion" in datos:
-
-            reunion = reuniones_collection.find_one({
-                "_id": ObjectId(datos["idReunion"])
-            })
-
+        if id_reunion:
+            reunion = query("SELECT * FROM reunion WHERE ID_Reunion = %s", (id_reunion,), one=True)
             if not reunion:
+                return jsonify({"error": "Reunión no encontrada"}), 404
 
-                return jsonify({
-                    "error": "Reunion no encontrada"
-                }), 404
+        campos = []
+        params = []
 
-        # ==========================================
-        # ACTUALIZAR
-        # ==========================================
-        resultado = citaciones_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": datos}
-        )
+        mapeo = {
+            "ID_Consejero": id_consejero,
+            "ID_Reunion": id_reunion,
+            "fechaEnvio": datos.get("fechaEnvio"),
+            "fechaReunion": datos.get("fechaReunion"),
+            "canal": datos.get("canal"),
+            "diasAnticipacion": datos.get("diasAnticipacion")
+        }
 
-        if resultado.matched_count == 0:
+        for clave, valor in mapeo.items():
+            if valor is not None:
+                campos.append(f"{clave} = %s")
+                params.append(valor)
 
-            return jsonify({
-                "error": "Citacion no encontrada"
-            }), 404
+        if not campos:
+            return jsonify({"error": "No hay campos para actualizar"}), 400
 
-        return jsonify({
-            "mensaje": "Citacion actualizada correctamente"
-        }), 200
+        params.append(id)
+        sql = f"UPDATE citacion SET {', '.join(campos)} WHERE ID_Citacion = %s"
+
+        execute(sql, params)
+
+        return jsonify({"mensaje": "Citación actualizada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # ==========================================
@@ -307,23 +229,13 @@ def actualizar_citacion(id):
 # ==========================================
 def eliminar_citacion(id):
     try:
+        citacion = query("SELECT * FROM citacion WHERE ID_Citacion = %s", (id,), one=True)
+        if not citacion:
+            return jsonify({"error": "Citación no encontrada"}), 404
 
-        resultado = citaciones_collection.delete_one({
-            "_id": ObjectId(id)
-        })
+        execute("DELETE FROM citacion WHERE ID_Citacion = %s", (id,))
 
-        if resultado.deleted_count == 0:
-
-            return jsonify({
-                "error": "Citacion no encontrada"
-            }), 404
-
-        return jsonify({
-            "mensaje": "Citacion eliminada correctamente"
-        }), 200
+        return jsonify({"mensaje": "Citación eliminada correctamente"}), 200
 
     except Exception as e:
-
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500

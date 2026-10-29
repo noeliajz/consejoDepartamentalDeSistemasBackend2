@@ -1,3 +1,9 @@
-from app.config.db import db
+from dataclasses import dataclass
+from typing import Optional
 
-constituciones_collection = db["constituciones"]
+@dataclass
+class ConstitucionModel:
+    ID_Constitucion: Optional[int]
+    ID_Reunion: int
+    ID_Comision: int
+    fecha: str
